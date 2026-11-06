@@ -178,10 +178,23 @@ const GENERAL_RULES: Rule[] = [labelsRule, popularityRule, budgetRule];
 
 /* ---------- Entry point -------------------------------------------------- */
 
+const stripAccents = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "");
+
+/**
+ * Which of her allergies appear in the ingredient list. Errs on the side of warning:
+ * accents are ignored and a French final "e" is dropped, so « lanoline » matches INCI "lanolin"
+ * and « glycérine » matches "glycerin". Each hit is reported as she typed it.
+ */
 function findAllergies(ings: string[], profile: Profile | null): string[] | undefined {
-  const needles = (profile?.allergies ?? []).map((a) => a.toLowerCase().trim()).filter(Boolean);
-  const hits = needles.length ? findAny(ings, needles) : [];
-  return hits.length ? hits : undefined;
+  const plain = ings.map(stripAccents);
+  const hits = new Set<string>();
+  for (const raw of profile?.allergies ?? []) {
+    const a = stripAccents(raw.toLowerCase().trim());
+    if (!a) continue;
+    const variants = a.length > 4 && a.endsWith("e") ? [a, a.slice(0, -1)] : [a];
+    if (findAny(plain, variants).length) hits.add(raw.toLowerCase().trim());
+  }
+  return hits.size ? [...hits] : undefined;
 }
 
 /**
@@ -222,7 +235,8 @@ export function scoreProduct(product: Product, profile: Profile | null, price?: 
   if (!hasData) ctx.info("Liste d'ingrédients non renseignée : analyse limitée.");
 
   // Allergies are a hard stop: big penalty now, score capped at 15 below.
-  const allergyHit = hasData ? findAllergies(ings, profile) : undefined;
+  // Checked on any ingredient list, even one too short for the other rules (e.g. pure lanolin).
+  const allergyHit = findAllergies(ings, profile);
   if (allergyHit) ctx.minus(60, `Contient ${allergyHit.join(", ")} : vous y êtes allergique.`);
 
   if (hasData) for (const rule of INGREDIENT_RULES) rule(ctx);

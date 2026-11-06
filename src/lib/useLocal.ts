@@ -1,5 +1,6 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
+import { SELFIE_CONSENT_VERSION } from "./legal";
 import type { Profile } from "./types";
 
 /** localStorage-backed state that survives page reloads (per device). */
@@ -49,6 +50,20 @@ export function useFavorites() {
   const isFav = (code: string) => favs.some((f) => f.code === code);
   const toggle = (f: Favorite) => setFavs(isFav(f.code) ? favs.filter((x) => x.code !== f.code) : [f, ...favs]);
   return { favs, isFav, toggle, ready };
+}
+
+/** When she agreed to send her selfie to the AI service (ISO date), for the current consent version. */
+export function useSelfieConsent() {
+  return useLocalState<string | null>(`bc.consent.selfie.v${SELFIE_CONSENT_VERSION}`, null);
+}
+
+/** Erase everything Belle stores on this device (profile, favourites, consents). */
+export function clearLocalData() {
+  try {
+    for (const key of Object.keys(localStorage)) if (key.startsWith("bc.")) localStorage.removeItem(key);
+  } catch {
+    /* storage unavailable: nothing stored */
+  }
 }
 
 export const DEFAULT_PROFILE: Profile = {

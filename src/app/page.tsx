@@ -5,6 +5,7 @@ import { useState } from "react";
 import { useSession } from "next-auth/react";
 import { ArrowRight, Heart, MessageCircleHeart, ScanBarcode, Search, Sparkles, Eye } from "lucide-react";
 import { Avatar } from "@/components/AccountCard";
+import { LegalLinks } from "@/components/LegalLinks";
 import { ProductImage } from "@/components/ProductCard";
 import { CleanserIcon, CompactIcon, ConcealerIcon, CreamJarIcon, FoundationIcon, LipstickIcon, MascaraIcon, SunscreenIcon } from "@/components/icons";
 import { Logo, SectionTitle } from "@/components/ui";
@@ -142,6 +143,8 @@ export default function Home() {
           </div>
         </section>
       )}
+
+      <LegalLinks />
     </div>
   );
 }

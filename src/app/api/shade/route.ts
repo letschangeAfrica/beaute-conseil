@@ -1,6 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod";
 import { z } from "zod";
+import { parseBody } from "@/lib/api-utils";
 import { FALLBACK, MODEL, anthropic, hasApiKey } from "@/lib/claude";
 import { guard, recordUsage } from "@/lib/guard";
 import { ShadeSchema } from "@/lib/schemas";
@@ -10,6 +11,8 @@ export const maxDuration = 60;
 const Body = z.object({
   image: z.string().min(100).max(8_000_000),
   mediaType: z.enum(["image/jpeg", "image/png", "image/webp"]),
+  /** Explicit consent given in the app before the first upload (GDPR art. 9). */
+  consent: z.literal(true),
 });
 
 const SYSTEM = `Tu es une maquilleuse professionnelle bienveillante. On te montre un selfie pour conseiller des teintes de maquillage.
@@ -21,8 +24,8 @@ export async function POST(req: Request) {
   if (!hasApiKey()) {
     return Response.json({ error: "Clé API Anthropic manquante (ANTHROPIC_API_KEY dans .env.local)." }, { status: 503 });
   }
-  const parsed = Body.safeParse(await req.json());
-  if (!parsed.success) return Response.json({ error: "Image invalide" }, { status: 400 });
+  const parsed = await parseBody(req, Body, "Image invalide");
+  if (!parsed.ok) return parsed.response;
   const blocked = await guard(req, "shade");
   if (blocked) return blocked;
 
@@ -43,7 +46,7 @@ export async function POST(req: Request) {
         },
       ],
     });
-    await recordUsage(response.usage, "shade");
+    await recordUsage(response, "shade");
     if (response.stop_reason === "refusal" || !response.parsed_output) {
       return Response.json({ error: "Analyse impossible avec cette photo. Essayez à la lumière du jour, sans filtre." }, { status: 422 });
     }

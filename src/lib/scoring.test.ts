@@ -98,7 +98,13 @@ describe("allergies", () => {
 
   it("understands the French spelling she is likely to type (« lanoline »)", () => {
     const p = product({ ingredientsText: "Aqua, Lanolin, Glycerin" });
-    expect(scoreProduct(p, profile({ allergies: ["lanoline"] })).allergyHit).toBeDefined();
+    expect(scoreProduct(p, profile({ allergies: ["Lanoline"] })).allergyHit).toEqual(["lanoline"]);
+    expect(scoreProduct(p, profile({ allergies: ["glycérine"] })).allergyHit).toEqual(["glycérine"]);
+  });
+
+  it("does not over-trim short words (« aloe » stays « aloe »)", () => {
+    const p = product({ ingredientsText: "Aqua, Glycerin, Aloe Barbadensis Leaf Juice" });
+    expect(scoreProduct(p, profile({ allergies: ["aloe"] })).allergyHit).toEqual(["aloe"]);
   });
 });
 
@@ -205,7 +211,8 @@ describe("skin type", () => {
   });
 
   it("uses the finish in the name (mat vs glow)", () => {
-    const matte = product({ name: "Fond de teint Matte" });
+    // No hydrating ingredients here, so only the finish rule differs between skin types.
+    const matte = product({ name: "Fond de teint Matte", ingredientsText: "Aqua, Talc, Mica, Tocopherol" });
     expect(delta(matte, profile(), profile({ skinType: "grasse" }))).toBeGreaterThan(0);
     expect(delta(matte, profile(), profile({ skinType: "seche" }))).toBeLessThan(0);
   });
@@ -232,7 +239,6 @@ describe("budget", () => {
     [30, -4],
     [40, -10],
   ])("price %d € with a 25 € budget changes the score by %d", (p, expected) => {
-    expect(delta(product(), profile({ budget: 25 }), profile({ budget: 25 }), price(p)) + 0).toBe(0); // sanity: same profile
     const withPrice = scoreProduct(product(), profile({ budget: 25 }), price(p)).score;
     const without = scoreProduct(product(), profile({ budget: 25 })).score;
     expect(withPrice - without).toBe(expected);

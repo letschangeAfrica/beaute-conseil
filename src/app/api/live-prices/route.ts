@@ -1,10 +1,12 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
+import { parseBody } from "@/lib/api-utils";
 import { FALLBACK, MODEL, anthropic, hasApiKey } from "@/lib/claude";
 import { guard, recordUsage } from "@/lib/guard";
 import { kv } from "@/lib/kv";
 import { PRICE_DOMAINS } from "@/lib/stores";
 import type { PricePoint } from "@/lib/types";
+import { asBarcode } from "@/lib/utils";
 
 export const maxDuration = 120;
 
@@ -71,13 +73,14 @@ export async function POST(req: Request) {
   if (!hasApiKey()) {
     return Response.json({ error: "Clé API Anthropic manquante (ANTHROPIC_API_KEY dans .env.local)." }, { status: 503 });
   }
-  const parsed = Body.safeParse(await req.json());
-  if (!parsed.success) return Response.json({ error: "Requête invalide" }, { status: 400 });
+  const parsed = await parseBody(req, Body);
+  if (!parsed.ok) return parsed.response;
   const { name, brand, code, quantity, city } = parsed.data;
 
   // Serve a recent search for the same product for free. City is left out of the key on purpose:
   // online prices are national, and sharing the entry across visitors is what makes the cache pay off.
-  const cacheKey = `prices:v1:${code && /^\d{6,14}$/.test(code) ? code : [brand, name, quantity ?? ""].map(norm).join("|")}`;
+  const barcode = code ? asBarcode(code) : null;
+  const cacheKey = `prices:v1:${barcode ?? [brand, name, quantity ?? ""].map(norm).join("|")}`;
   const cached = await kv.getJSON<LiveReport>(cacheKey).catch(() => null);
   if (cached) return Response.json(cached);
 
@@ -114,7 +117,7 @@ Cherche sur plusieurs enseignes (parfumeries, parapharmacies, grandes surfaces, 
         ],
         messages,
       });
-      await recordUsage(response.usage, "live-prices");
+      await recordUsage(response, "live-prices");
 
       if (response.stop_reason === "refusal") {
         return Response.json({ error: "La recherche de prix n'a pas pu aboutir." }, { status: 502 });

@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { ArrowRight, Camera, CameraOff, Keyboard, ScanBarcode } from "lucide-react";
 import type { IScannerControls } from "@zxing/browser";
 import { Notice, PageHeader } from "@/components/ui";
+import { parseBarcode } from "@/lib/utils";
 
 function Corners() {
   const c = "absolute h-8 w-8 border-gold";
@@ -44,11 +45,11 @@ export default function ScannerPage() {
         { video: { facingMode: { ideal: "environment" } } },
         videoRef.current!,
         (result) => {
-          const text = result?.getText();
-          if (text && /^\d{8,14}$/.test(text)) {
+          const code = parseBarcode(result?.getText() ?? "");
+          if (code) {
             stop();
             navigator.vibrate?.(80);
-            router.push(`/produit/${text}`);
+            router.push(`/produit/${code}`);
           }
         },
       );
@@ -92,8 +93,8 @@ export default function ScannerPage() {
         className="card p-5"
         onSubmit={(e) => {
           e.preventDefault();
-          const code = manual.replace(/\D/g, "");
-          if (code.length >= 8) router.push(`/produit/${code}`);
+          const code = parseBarcode(manual);
+          if (code) router.push(`/produit/${code}`);
         }}
       >
         <label className="mb-3 flex items-center gap-2 font-bold" htmlFor="ean">
@@ -108,7 +109,7 @@ export default function ScannerPage() {
             onChange={(e) => setManual(e.target.value)}
             placeholder="3600530171910"
           />
-          <button className="btn-icon" aria-label="Valider le code" disabled={manual.replace(/\D/g, "").length < 8}>
+          <button className="btn-icon" aria-label="Valider le code" disabled={!parseBarcode(manual)}>
             <ArrowRight size={20} />
           </button>
         </div>

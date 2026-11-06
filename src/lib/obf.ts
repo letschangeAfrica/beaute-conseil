@@ -1,5 +1,6 @@
 import "server-only";
 import type { Product } from "./types";
+import { asBarcode } from "./utils";
 
 /**
  * Open Beauty Facts: free, open database of cosmetics (ingredients, labels, photos).
@@ -93,7 +94,7 @@ export async function searchProducts(query: string, pageSize = 40): Promise<Prod
 }
 
 export async function getProduct(code: string): Promise<Product | null> {
-  if (!/^\d{6,14}$/.test(code)) return null;
+  if (!asBarcode(code)) return null;
   const data = await obfFetch(`${BASE}/api/v2/product/${code}.json?fields=${FIELDS}`, 3600);
   if (data.status !== 1 || !data.product) return null;
   return normalize({ ...data.product, code });

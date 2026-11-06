@@ -1,10 +1,11 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
+import { parseBody } from "@/lib/api-utils";
 import { ProfileSchema, searchAndScore } from "@/lib/catalog";
 import { FALLBACK, MODEL, anthropic, hasApiKey, profileSummary } from "@/lib/claude";
 import { guard, overBudget, recordUsage } from "@/lib/guard";
 import { PRICE_DOMAINS } from "@/lib/stores";
-import type { Profile } from "@/lib/types";
+import type { ChatEvent, Profile } from "@/lib/types";
 
 export const maxDuration = 300;
 
@@ -44,7 +45,8 @@ const searchTool: Anthropic.Beta.BetaTool = {
 };
 const SearchInput = z.object({ query: z.string().min(2).max(120) });
 
-type Emit = (event: Record<string, unknown>) => void;
+/** Writes one NDJSON event to the client. The ChatEvent type is shared with conseillere/page.tsx. */
+type Emit = (event: ChatEvent) => void;
 
 async function runSearch(input: unknown, profile: Profile | null, emit: Emit) {
   const parsed = SearchInput.safeParse(input);
@@ -74,8 +76,8 @@ export async function POST(req: Request) {
   if (!hasApiKey()) {
     return Response.json({ error: "Clé API Anthropic manquante (ANTHROPIC_API_KEY dans .env.local)." }, { status: 503 });
   }
-  const parsed = Body.safeParse(await req.json());
-  if (!parsed.success) return Response.json({ error: "Requête invalide" }, { status: 400 });
+  const parsed = await parseBody(req, Body);
+  if (!parsed.ok) return parsed.response;
   const blocked = await guard(req, "chat");
   if (blocked) return blocked;
   const { profile } = parsed.data;
@@ -122,7 +124,7 @@ export async function POST(req: Request) {
             }
           }
           const final = await response.finalMessage();
-          await recordUsage(final.usage, "chat");
+          await recordUsage(final, "chat");
           messages.push({ role: "assistant", content: final.content });
 
           if (final.stop_reason === "refusal") {

@@ -77,3 +77,8 @@ export interface ScoredProduct extends Product {
   allergyHit?: string[];
   bestPrice?: PricePoint;
 }
+
+/** NDJSON events streamed by /api/chat to the advisor page, one JSON object per line. */
+export type ChatEvent =
+  | { type: "text" | "status" | "error"; text: string }
+  | { type: "products"; items: Pick<ScoredProduct, "code" | "name" | "brand" | "image" | "score" | "verdict">[] };

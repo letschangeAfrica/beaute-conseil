@@ -26,19 +26,27 @@ function dailyBudget(): number {
   return Number.isFinite(v) && v > 0 ? v : 5;
 }
 
-/* ---------- Pricing: claude-opus-5-5 list prices, USD per million tokens */
+/* ---------- Pricing: list prices, USD per million tokens ----------------- */
 
-const PRICE = { input: 4, output: 20, cacheWrite: 5, cacheRead: 0.2, perWebSearch: 0.01 };
+type Pricing = { input: number; output: number; cacheWrite: number; cacheRead: number; perWebSearch: number };
 
-/** Estimated cost of one response, from its `usage`. (A refusal fallback may bill at another model's rate.) */
-export function costOf(u: Anthropic.Beta.BetaUsage): number {
+/** Add an entry when MODEL (lib/claude.ts) changes or a fallback model shows up in the logs. */
+const PRICING: Record<string, Pricing> = {
+  "claude-opus-5-5": { input: 4, output: 20, cacheWrite: 5, cacheRead: 0.2, perWebSearch: 0.01 },
+};
+/** Used for any model not listed: over-estimating keeps the daily cap safe. */
+const MOST_EXPENSIVE = PRICING["claude-opus-5-5"];
+
+/** Estimated cost of one response, priced by the model that actually answered (it may be the refusal fallback). */
+export function costOf(u: Anthropic.Beta.BetaUsage, model: string): number {
+  const p = PRICING[model] ?? MOST_EXPENSIVE;
   return (
-    (u.input_tokens * PRICE.input +
-      u.output_tokens * PRICE.output +
-      (u.cache_creation_input_tokens ?? 0) * PRICE.cacheWrite +
-      (u.cache_read_input_tokens ?? 0) * PRICE.cacheRead) /
+    (u.input_tokens * p.input +
+      u.output_tokens * p.output +
+      (u.cache_creation_input_tokens ?? 0) * p.cacheWrite +
+      (u.cache_read_input_tokens ?? 0) * p.cacheRead) /
       1_000_000 +
-    (u.server_tool_use?.web_search_requests ?? 0) * PRICE.perWebSearch
+    (u.server_tool_use?.web_search_requests ?? 0) * p.perWebSearch
   );
 }
 
@@ -102,11 +110,14 @@ export async function overBudget(): Promise<boolean> {
   return (await kv.getNumber(spendKey())) >= dailyBudget();
 }
 
-/** Adds a response's estimated cost to today's total. Never throws. */
-export async function recordUsage(usage: Anthropic.Beta.BetaUsage | null | undefined, label: string): Promise<void> {
-  if (!usage) return;
+/** Adds a response's estimated cost to today's total. Pass the whole message (it carries `usage` and `model`). Never throws. */
+export async function recordUsage(
+  message: Pick<Anthropic.Beta.BetaMessage, "usage" | "model"> | null | undefined,
+  label: string,
+): Promise<void> {
+  if (!message?.usage) return;
   try {
-    const total = await kv.incrByFloat(spendKey(), costOf(usage), 2 * DAY);
+    const total = await kv.incrByFloat(spendKey(), costOf(message.usage, message.model), 2 * DAY);
     if (total >= dailyBudget()) console.warn(`[budget] daily cap of $${dailyBudget()} reached (last call: ${label})`);
   } catch (err) {
     console.error("recordUsage", err);

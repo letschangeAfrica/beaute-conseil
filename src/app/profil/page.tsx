@@ -13,14 +13,17 @@ import {
   ShieldAlert,
   Sparkles,
   Target,
+  Trash2,
   UserRound,
   Wallet,
   X,
 } from "lucide-react";
-import { useSession } from "next-auth/react";
+import Link from "next/link";
+import { signOut, useSession } from "next-auth/react";
 import { AccountCard } from "@/components/AccountCard";
+import { LegalLinks } from "@/components/LegalLinks";
 import { Notice, PageHeader, Spinner } from "@/components/ui";
-import { DEFAULT_PROFILE, useProfile } from "@/lib/useLocal";
+import { DEFAULT_PROFILE, clearLocalData, useProfile, useSelfieConsent } from "@/lib/useLocal";
 import type { Avoid, Concern, Pref, Profile, ShadeAnalysis, SkinTone, SkinType, Undertone } from "@/lib/types";
 
 const SKIN_TYPES: [SkinType, string, string][] = [
@@ -133,6 +136,15 @@ export default function ProfilPage() {
   const [shadeError, setShadeError] = useState("");
   const router = useRouter();
   const { data: session } = useSession();
+  const [consent, setConsent] = useSelfieConsent();
+  const [consentBox, setConsentBox] = useState(false);
+
+  async function deleteAllData() {
+    if (!window.confirm("Effacer votre profil, vos favoris et vos consentements de cet appareil, et vous déconnecter ?")) return;
+    clearLocalData();
+    if (session) await signOut({ redirect: false });
+    window.location.href = "/";
+  }
 
   useEffect(() => {
     if (ready && saved) setP({ ...DEFAULT_PROFILE, ...saved });
@@ -154,7 +166,7 @@ export default function ProfilPage() {
       const res = await fetch("/api/shade", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ image: data, mediaType }),
+        body: JSON.stringify({ image: data, mediaType, consent: Boolean(consent) }),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || "Une erreur est survenue.");
@@ -199,6 +211,23 @@ export default function ProfilPage() {
               <p className="mt-0.5 text-sm text-cream/80">Selfie à la lumière du jour, sans maquillage ni filtre. La photo sert uniquement à l&apos;analyse et n&apos;est pas conservée.</p>
             </div>
           </div>
+          {!consent ? (
+            <div className="mt-4 rounded-2xl bg-cream/10 p-4 ring-1 ring-cream/25">
+              <label className="flex cursor-pointer gap-3 text-sm leading-relaxed">
+                <input type="checkbox" checked={consentBox} onChange={(e) => setConsentBox(e.target.checked)} className="mt-1 h-5 w-5 shrink-0 accent-gold" />
+                <span>
+                  J&apos;accepte que ma photo soit envoyée à Anthropic (États-Unis), le service d&apos;intelligence artificielle utilisé par Belle, uniquement pour analyser ma carnation. Belle
+                  ne conserve pas la photo. Je peux retirer mon accord à tout moment en supprimant mes données.{" "}
+                  <Link href="/confidentialite" className="font-semibold text-gold underline">
+                    En savoir plus
+                  </Link>
+                </span>
+              </label>
+              <button className="btn mt-3 w-full bg-cream text-brand hover:bg-gold disabled:opacity-50" disabled={!consentBox} onClick={() => setConsent(new Date().toISOString())}>
+                Continuer
+              </button>
+            </div>
+          ) : (
           <label className={`btn mt-4 w-full cursor-pointer bg-cream text-brand hover:bg-gold ${shadeState === "loading" ? "pointer-events-none opacity-70" : ""}`}>
             {shadeState === "loading" ? (
               <Spinner label="Analyse en cours…" />
@@ -216,6 +245,7 @@ export default function ProfilPage() {
               onChange={(e) => e.target.files?.[0] && analyzeSelfie(e.target.files[0])}
             />
           </label>
+          )}
         </div>
         {shadeState === "error" && (
           <div className="p-4">
@@ -387,11 +417,29 @@ export default function ProfilPage() {
         </div>
       </Section>
 
+      <p className="px-1 text-sm leading-relaxed text-ink/65">
+        En enregistrant, vous acceptez que ces informations, dont vos allergies et l&apos;état de votre peau, servent à personnaliser les scores et les conseils. Elles restent sur votre
+        téléphone et ne sont jamais conservées sur nos serveurs.{" "}
+        <Link href="/confidentialite" className="font-semibold text-brand underline">
+          Politique de confidentialité
+        </Link>
+      </p>
+
       <div className="sticky bottom-24 z-10 pt-2">
         <button className="btn-primary w-full text-lg shadow-lift" onClick={onSave}>
           <Check size={20} /> Enregistrer mon profil
         </button>
       </div>
+
+      <section className="card mt-6 p-5">
+        <h2 className="font-bold">Vos données</h2>
+        <p className="mt-1 text-sm text-ink/60">Efface votre profil, vos favoris et vos consentements de cet appareil, et vous déconnecte.</p>
+        <button onClick={deleteAllData} className="btn mt-3 w-full bg-danger-soft text-danger ring-1 ring-danger/25 hover:bg-danger hover:text-white">
+          <Trash2 size={18} /> Supprimer mes données
+        </button>
+      </section>
+
+      <LegalLinks className="pt-2" />
     </div>
   );
 }

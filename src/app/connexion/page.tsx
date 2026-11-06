@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { auth, safeRedirect, signIn } from "@/auth";
 import { GoogleIcon } from "@/components/GoogleIcon";
@@ -44,7 +45,10 @@ export default async function ConnexionPage({ searchParams }: { searchParams: Pr
       </form>
 
       <p className="text-center text-xs leading-relaxed text-ink/55">
-        Nous recevons uniquement votre nom, votre e-mail et votre photo de profil Google. Votre profil beauté reste sur votre téléphone.
+        Nous recevons uniquement votre nom, votre e-mail et votre photo de profil Google. Votre profil beauté reste sur votre téléphone.{" "}
+        <Link href="/confidentialite" className="underline">
+          Politique de confidentialité
+        </Link>
       </p>
     </div>
   );

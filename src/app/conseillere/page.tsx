@@ -5,6 +5,7 @@ import { ArrowUp, MessageCircleQuestion, RotateCcw, UserRound } from "lucide-rea
 import ProductCard, { type CardData } from "@/components/ProductCard";
 import { FoundationIcon, LipstickIcon, MascaraIcon, CreamJarIcon } from "@/components/icons";
 import { Notice, Spinner } from "@/components/ui";
+import type { ChatEvent } from "@/lib/types";
 import { useProfile } from "@/lib/useLocal";
 
 interface Msg {
@@ -103,15 +104,24 @@ export default function ConseillerePage() {
         buf = lines.pop() ?? "";
         for (const line of lines) {
           if (!line.trim()) continue;
-          const ev = JSON.parse(line);
-          if (ev.type === "text") update((m) => ({ ...m, content: m.content + ev.text, status: undefined }));
-          else if (ev.type === "status") update((m) => ({ ...m, status: ev.text }));
-          else if (ev.type === "products")
-            update((m) => {
-              const seen = new Set((m.products ?? []).map((x) => x.code));
-              return { ...m, products: [...(m.products ?? []), ...ev.items.filter((x: CardData) => !seen.has(x.code))] };
-            });
-          else if (ev.type === "error") update((m) => ({ ...m, content: m.content + `\n\n${ev.text}`, status: undefined }));
+          const ev = JSON.parse(line) as ChatEvent;
+          switch (ev.type) {
+            case "text":
+              update((m) => ({ ...m, content: m.content + ev.text, status: undefined }));
+              break;
+            case "status":
+              update((m) => ({ ...m, status: ev.text }));
+              break;
+            case "products":
+              update((m) => {
+                const seen = new Set((m.products ?? []).map((x) => x.code));
+                return { ...m, products: [...(m.products ?? []), ...ev.items.filter((x) => !seen.has(x.code))] };
+              });
+              break;
+            case "error":
+              update((m) => ({ ...m, content: m.content + `\n\n${ev.text}`, status: undefined }));
+              break;
+          }
         }
       }
     } catch (e) {
@@ -207,6 +217,13 @@ export default function ConseillerePage() {
         )}
         <div ref={endRef} />
       </div>
+
+      <p className="mt-4 px-2 text-center text-xs leading-relaxed text-ink/50">
+        Vos messages et votre profil sont traités par une IA (Anthropic) pour vous répondre, sans être conservés par Belle. Inutile de partager des informations médicales.{" "}
+        <Link href="/confidentialite" className="underline">
+          En savoir plus
+        </Link>
+      </p>
 
       <form
         className="sticky bottom-24 mt-4 flex items-center gap-2 rounded-full bg-white p-1.5 pl-5 shadow-lift ring-1 ring-caramel/40 focus-within:ring-2 focus-within:ring-brand"

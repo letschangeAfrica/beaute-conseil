@@ -46,13 +46,18 @@ export const productHref = (code: string) => `/produit/${code}`;
 
 /* ---------- Barcodes ---------------------------------------------------- */
 
-/** GTIN/EAN length bounds. NOTE: obf.ts currently accepts 6, the scanner 8 — see audit F-09. */
-export const BARCODE_MIN = 8;
-export const BARCODE_MAX = 14;
-const BARCODE_RE = new RegExp(`^\\d{${BARCODE_MIN},${BARCODE_MAX}}$`);
+/** The one barcode rule for the whole app: a GTIN/EAN of 8 to 14 digits (EAN-8, UPC-A, EAN-13, GTIN-14). */
+const BARCODE_RE = /^\d{8,14}$/;
 
-export const cleanBarcode = (s: string) => s.replace(/\D/g, "");
-export const isBarcode = (s: string) => BARCODE_RE.test(s);
+declare const BarcodeBrand: unique symbol;
+/** A validated barcode. Only asBarcode() / parseBarcode() can produce one (branded type, zero runtime cost). */
+export type Barcode = string & { readonly [BarcodeBrand]: true };
+
+/** Strict: for codes from URLs and APIs, which must already be digits only. */
+export const asBarcode = (s: string): Barcode | null => (BARCODE_RE.test(s) ? (s as Barcode) : null);
+
+/** Lenient: for typed or scanned input, drops spaces, dashes and other separators first. */
+export const parseBarcode = (input: string): Barcode | null => asBarcode(input.replace(/\D/g, ""));
 
 /* ---------- Formatting -------------------------------------------------- */
 
