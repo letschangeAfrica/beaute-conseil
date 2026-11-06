@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { createContext, useContext, useRef, useState } from "react";
 import { Check, Plus, X } from "lucide-react";
 import type { Avoid, Concern, Pref, SkinTone, SkinType, Undertone } from "@/lib/types";
 
@@ -52,18 +52,52 @@ export function toggle<T>(list: T[], v: T): T[] {
   return list.includes(v) ? list.filter((x) => x !== v) : [...list, v];
 }
 
-type IconT = React.ComponentType<{ size?: number; className?: string }>;
+type IconT = React.ComponentType<{ size?: number; className?: string; "aria-hidden"?: boolean | "true" }>;
 
-export function Section({ icon: Icon, title, hint, children }: { icon: IconT; title: string; hint?: string; children: React.ReactNode }) {
+/* ---------- Section ------------------------------------------------------ */
+
+/**
+ * A titled group of fields. `variant="card"` (default) is a white card with an icon, for dense
+ * screens like the profile. `variant="plain"` drops the card and the icon, for the welcome flow
+ * where each step is already one question.
+ */
+export function Section({
+  icon: Icon,
+  title,
+  hint,
+  children,
+  variant = "card",
+  id,
+}: {
+  icon: IconT;
+  title: string;
+  hint?: string;
+  children: React.ReactNode;
+  variant?: "card" | "plain";
+  id?: string;
+}) {
+  if (variant === "plain") {
+    return (
+      <section aria-labelledby={id}>
+        <h2 id={id} className="font-display text-[1.3rem] font-normal leading-snug tracking-tight text-ink">
+          {title}
+        </h2>
+        {hint && <p className="mt-1 text-[0.95rem] leading-relaxed text-ink/70">{hint}</p>}
+        <div className="mt-4">{children}</div>
+      </section>
+    );
+  }
   return (
-    <section className="card p-5">
-      <div className="mb-4 flex gap-3">
-        <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-gold/60 text-brand">
-          <Icon size={20} />
+    <section className="card p-5 sm:p-6" aria-labelledby={id}>
+      <div className="mb-4 flex gap-3.5">
+        <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-brand-soft text-brand">
+          <Icon size={20} aria-hidden="true" />
         </span>
-        <div>
-          <h2 className="font-bold leading-tight">{title}</h2>
-          {hint && <p className="mt-0.5 text-sm text-ink/60">{hint}</p>}
+        <div className="min-w-0 pt-0.5">
+          <h2 id={id} className="font-display text-[1.18rem] font-medium leading-tight tracking-tight text-ink">
+            {title}
+          </h2>
+          {hint && <p className="mt-1 text-sm leading-relaxed text-ink/70">{hint}</p>}
         </div>
       </div>
       {children}
@@ -71,50 +105,120 @@ export function Section({ icon: Icon, title, hint, children }: { icon: IconT; ti
   );
 }
 
-export function OptionCard({ selected, onClick, title, hint, swatch }: { selected: boolean; onClick: () => void; title: string; hint: string; swatch?: string }) {
+/* ---------- Single choice: ChoiceGroup + OptionCard ---------------------- */
+
+const InGroup = createContext(false);
+
+/** Arrow keys move and select within a radio group (WAI-ARIA radio pattern). */
+function onRadioKeys(e: React.KeyboardEvent<HTMLElement>) {
+  const keys = ["ArrowDown", "ArrowRight", "ArrowUp", "ArrowLeft", "Home", "End"];
+  if (!keys.includes(e.key)) return;
+  const radios = Array.from(e.currentTarget.querySelectorAll<HTMLElement>('[role="radio"]'));
+  const i = radios.indexOf(document.activeElement as HTMLElement);
+  if (i < 0) return;
+  e.preventDefault();
+  const n = radios.length;
+  const next = e.key === "Home" ? 0 : e.key === "End" ? n - 1 : e.key === "ArrowDown" || e.key === "ArrowRight" ? (i + 1) % n : (i - 1 + n) % n;
+  radios[next].focus();
+  radios[next].click();
+}
+
+/**
+ * Wraps OptionCards that form one single choice: gives them radio semantics, a roving tab stop
+ * and arrow-key navigation. Without it, OptionCard stays a toggle button (aria-pressed).
+ */
+export function ChoiceGroup({ label, labelledBy, className = "grid gap-2.5", children }: { label?: string; labelledBy?: string; className?: string; children: React.ReactNode }) {
   return (
-    <button onClick={onClick} aria-pressed={selected} className={`option flex items-center gap-3 ${selected ? "border-brand bg-paper" : "border-caramel/25 hover:border-caramel"}`}>
-      {swatch && <span className="h-7 w-7 shrink-0 rounded-full ring-1 ring-black/10" style={{ background: swatch }} />}
-      <span className="flex-1">
-        <span className="block font-semibold">{title}</span>
-        <span className="block text-sm text-ink/60">{hint}</span>
+    <InGroup.Provider value={true}>
+      <div role="radiogroup" aria-label={labelledBy ? undefined : label} aria-labelledby={labelledBy} className={className} onKeyDown={onRadioKeys}>
+        {children}
+      </div>
+    </InGroup.Provider>
+  );
+}
+
+export function OptionCard({ selected, onClick, title, hint, swatch }: { selected: boolean; onClick: () => void; title: string; hint: string; swatch?: string }) {
+  const radio = useContext(InGroup);
+  const semantics = radio ? { role: "radio" as const, "aria-checked": selected, tabIndex: selected ? 0 : -1 } : { "aria-pressed": selected };
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      {...semantics}
+      className={`option group flex min-h-[4.25rem] items-center gap-3.5 ${
+        selected ? "border-brand bg-brand-soft/45 shadow-soft" : "border-line hover:border-caramel hover:bg-paper"
+      }`}
+    >
+      {swatch && <span aria-hidden="true" className="swatch h-9 w-9" style={{ background: swatch }} />}
+      <span className="min-w-0 flex-1">
+        <span className="block font-semibold leading-snug text-ink">{title}</span>
+        <span className="mt-0.5 block text-sm leading-snug text-ink/70">{hint}</span>
       </span>
-      <span className={`grid h-6 w-6 shrink-0 place-items-center rounded-full border-2 ${selected ? "border-brand bg-brand text-white" : "border-caramel/50"}`}>
+      <span
+        aria-hidden="true"
+        className={`grid h-6 w-6 shrink-0 place-items-center rounded-full border-2 transition-colors ${selected ? "border-brand bg-brand text-white" : "border-ink/30 group-hover:border-caramel-ink"}`}
+      >
         {selected && <Check size={14} strokeWidth={3} />}
       </span>
     </button>
   );
 }
 
+/* ---------- Multiple choice ---------------------------------------------- */
+
 export function Chip({ on, onClick, children }: { on: boolean; onClick: () => void; children: React.ReactNode }) {
   return (
-    <button onClick={onClick} aria-pressed={on} className={on ? "chip-on" : "chip-off"}>
-      {on && <Check size={15} strokeWidth={2.5} />}
+    <button type="button" onClick={onClick} aria-pressed={on} className={on ? "chip-on" : "chip-off"}>
+      {on ? <Check size={15} strokeWidth={2.5} aria-hidden="true" /> : <Plus size={15} strokeWidth={2} aria-hidden="true" className="text-ink/60" />}
       {children}
     </button>
   );
 }
 
-export function ToneGrid({ value, onChange }: { value: SkinTone; onChange: (v: SkinTone) => void }) {
+/* ---------- Skin tone ---------------------------------------------------- */
+
+/** Six skin-tone swatches as one radio group, each with its visible label. */
+export function ToneGrid({
+  value,
+  onChange,
+  label = "Carnation",
+  labelledBy,
+  className = "grid grid-cols-3 gap-2 sm:grid-cols-6",
+}: {
+  value: SkinTone;
+  onChange: (v: SkinTone) => void;
+  label?: string;
+  labelledBy?: string;
+  className?: string;
+}) {
   return (
-    <div className="grid grid-cols-3 gap-2">
-      {TONES.map(([v, label, color]) => {
+    <div role="radiogroup" aria-label={labelledBy ? undefined : label} aria-labelledby={labelledBy} className={className} onKeyDown={onRadioKeys}>
+      {TONES.map(([v, name, color]) => {
         const on = value === v;
         return (
           <button
             key={v}
+            type="button"
+            role="radio"
+            aria-checked={on}
+            tabIndex={on ? 0 : -1}
             onClick={() => onChange(v)}
-            aria-pressed={on}
-            className={`flex flex-col items-center gap-2 rounded-2xl border-2 px-2 py-3 text-sm font-semibold transition ${on ? "border-brand bg-paper" : "border-transparent hover:bg-paper"}`}
+            className={`group flex min-h-[6.75rem] flex-col items-center justify-center gap-2.5 rounded-tile border-2 px-1.5 py-3 text-sm font-semibold transition-colors duration-150 ${
+              on ? "border-brand bg-white text-ink shadow-soft" : "border-transparent text-ink/80 hover:bg-white/70"
+            }`}
           >
-            <span className="relative grid h-12 w-12 place-items-center rounded-full ring-1 ring-black/10" style={{ background: color }}>
+            <span
+              aria-hidden="true"
+              className={`swatch relative grid h-14 w-14 place-items-center transition-transform duration-200 motion-safe:group-hover:scale-105 ${on ? "ring-2 ring-brand ring-offset-2 ring-offset-white" : ""}`}
+              style={{ background: color }}
+            >
               {on && (
-                <span className="grid h-6 w-6 place-items-center rounded-full bg-white/90 text-brand">
-                  <Check size={15} strokeWidth={3} />
+                <span className="grid h-6 w-6 place-items-center rounded-full bg-white text-brand shadow-soft">
+                  <Check size={14} strokeWidth={3} />
                 </span>
               )}
             </span>
-            {label}
+            <span className="text-center leading-tight">{name}</span>
           </button>
         );
       })}
@@ -122,25 +226,51 @@ export function ToneGrid({ value, onChange }: { value: SkinTone; onChange: (v: S
   );
 }
 
-export function SensitiveToggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean) => void }) {
+/* ---------- Switch ------------------------------------------------------- */
+
+export function SensitiveToggle({ checked, onChange, hint }: { checked: boolean; onChange: (v: boolean) => void; hint?: string }) {
   return (
-    <label className="mt-4 flex cursor-pointer items-center justify-between gap-3 rounded-2xl bg-paper px-4 py-3">
-      <span className="font-semibold">Ma peau est sensible ou réactive</span>
-      <span className="relative inline-flex">
-        <input type="checkbox" className="peer sr-only" checked={checked} onChange={(e) => onChange(e.target.checked)} />
-        <span className="h-7 w-12 rounded-full bg-caramel/40 transition peer-checked:bg-brand" />
-        <span className="absolute left-1 top-1 h-5 w-5 rounded-full bg-white shadow transition peer-checked:translate-x-5" />
+    <label className="mt-4 flex min-h-14 cursor-pointer items-center justify-between gap-4 rounded-tile bg-paper px-4 py-3 ring-1 ring-line transition-colors hover:bg-white">
+      <span className="min-w-0">
+        <span className="block font-semibold text-ink">Ma peau est sensible ou réactive</span>
+        {hint && <span className="mt-0.5 block text-sm leading-snug text-ink/70">{hint}</span>}
+      </span>
+      <span className="relative inline-flex shrink-0">
+        <input type="checkbox" role="switch" aria-checked={checked} className="peer sr-only" checked={checked} onChange={(e) => onChange(e.target.checked)} />
+        <span
+          aria-hidden="true"
+          className="h-7 w-12 rounded-full bg-ink/25 transition-colors peer-checked:bg-brand peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-brand"
+        />
+        <span
+          aria-hidden="true"
+          className="absolute left-1 top-1 h-5 w-5 rounded-full bg-white shadow transition-transform peer-checked:translate-x-5 motion-reduce:transition-none"
+        />
       </span>
     </label>
   );
 }
 
-export function AllergyEditor({ allergies, onChange }: { allergies: string[]; onChange: (v: string[]) => void }) {
+/* ---------- Free-text allergies ----------------------------------------- */
+
+/** Enter or "Ajouter" adds a tag and keeps the keyboard open; each tag removes itself on tap. */
+export function AllergyEditor({ allergies, onChange, inputId }: { allergies: string[]; onChange: (v: string[]) => void; inputId?: string }) {
   const [input, setInput] = useState("");
+  const [announce, setAnnounce] = useState("");
+  const ref = useRef<HTMLInputElement>(null);
   const add = () => {
     const v = input.trim().toLowerCase();
-    if (v && !allergies.includes(v)) onChange([...allergies, v]);
+    if (v && !allergies.includes(v)) {
+      onChange([...allergies, v]);
+      setAnnounce(`${v} ajouté`);
+    } else if (v) {
+      setAnnounce(`${v} est déjà dans la liste`);
+    }
     setInput("");
+    ref.current?.focus();
+  };
+  const remove = (a: string) => {
+    onChange(allergies.filter((x) => x !== a));
+    setAnnounce(`${a} retiré`);
   };
   return (
     <>
@@ -151,20 +281,44 @@ export function AllergyEditor({ allergies, onChange }: { allergies: string[]; on
           add();
         }}
       >
-        <input className="input" value={input} onChange={(e) => setInput(e.target.value)} placeholder="Ajouter un ingrédient" aria-label="Ingrédient auquel vous êtes allergique" />
-        <button className="btn-icon" aria-label="Ajouter l'allergie" disabled={!input.trim()}>
-          <Plus size={20} />
+        <input
+          ref={ref}
+          id={inputId}
+          className="input"
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          placeholder="Ex. linalool"
+          aria-label="Ingrédient auquel vous êtes allergique"
+          enterKeyHint="done"
+          autoCapitalize="none"
+          autoCorrect="off"
+          autoComplete="off"
+          spellCheck={false}
+        />
+        <button type="submit" className="btn-secondary min-h-12 shrink-0 px-4 sm:px-5" disabled={!input.trim()}>
+          <Plus size={18} aria-hidden="true" />
+          Ajouter
         </button>
       </form>
       {allergies.length > 0 && (
-        <div className="mt-3 flex flex-wrap gap-2">
+        <ul className="mt-3 flex flex-wrap gap-2" aria-label="Vos allergies">
           {allergies.map((a) => (
-            <button key={a} className="chip border-danger/30 bg-danger-soft text-danger hover:border-danger" onClick={() => onChange(allergies.filter((x) => x !== a))} aria-label={`Retirer ${a}`}>
-              {a} <X size={15} />
-            </button>
+            <li key={a} className="min-w-0 max-w-full">
+              <button
+                type="button"
+                className="chip max-w-full border-danger/30 bg-danger-soft text-danger hover:border-danger"
+                onClick={() => remove(a)}
+                aria-label={`Retirer ${a}`}
+              >
+                <span className="truncate">{a}</span> <X size={15} aria-hidden="true" className="shrink-0" />
+              </button>
+            </li>
           ))}
-        </div>
+        </ul>
       )}
+      <p className="sr-only" aria-live="polite">
+        {announce}
+      </p>
     </>
   );
 }

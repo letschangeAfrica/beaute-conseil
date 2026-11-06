@@ -172,3 +172,28 @@ body {
 @utility option {
   @apply w-full rounded-tile border-2 bg-white px-4 py-3 text-left transition;
 }
+
+/* ---------- Colour swatch ---------- */
+
+/* A round colour sample with a soft top light and a hairline edge, so pale tones read on white. */
+@utility swatch {
+  @apply shrink-0 rounded-full;
+  box-shadow:
+    inset 0 0 0 1px rgb(58 29 20 / 0.12),
+    inset 0 6px 10px -4px rgb(255 255 255 / 0.55),
+    inset 0 -6px 10px -6px rgb(58 29 20 / 0.25);
+}
+
+/* ---------- Pinned action bar ---------- */
+
+/*
+ * Primary action pinned to the bottom of the screen on phones, above the iPhone home indicator.
+ * From md up it returns to the page flow. Pages using it must hide BottomNav or sit above it.
+ */
+@utility action-bar {
+  @apply fixed inset-x-0 bottom-0 z-30 border-t border-line bg-cream/92 px-4 pt-3 backdrop-blur-md md:static md:z-auto md:border-0 md:bg-transparent md:px-0 md:pt-0 md:backdrop-blur-none;
+  padding-bottom: max(env(safe-area-inset-bottom), 0.75rem);
+  @media (width >= 48rem) {
+    padding-bottom: 0;
+  }
+}

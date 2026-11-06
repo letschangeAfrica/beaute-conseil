@@ -24,7 +24,7 @@ import { LegalLinks } from "@/components/LegalLinks";
 import { Notice, PageHeader, Spinner } from "@/components/ui";
 import { DEFAULT_PROFILE, clearLocalData, useProfile, useSelfieConsent } from "@/lib/useLocal";
 import type { Profile, ShadeAnalysis } from "@/lib/types";
-import { AVOIDS, AllergyEditor, CONCERNS, Chip, OptionCard, PREFS, SKIN_TYPES, Section, SensitiveToggle, ToneGrid, UNDERTONES, toggle } from "@/components/ProfileFields";
+import { AVOIDS, AllergyEditor, CONCERNS, ChoiceGroup, Chip, OptionCard, PREFS, SKIN_TYPES, Section, SensitiveToggle, ToneGrid, UNDERTONES, toggle } from "@/components/ProfileFields";
 import { resizeImage } from "@/lib/image";
 import { errorMessage, postJson } from "@/lib/utils";
 
@@ -179,19 +179,19 @@ export default function ProfilPage() {
       </Section>
 
       <Section icon={Palette} title="Votre sous-ton" hint="Regardez les veines de votre poignet à la lumière du jour.">
-        <div className="space-y-2">
+        <ChoiceGroup label="Votre sous-ton">
           {UNDERTONES.map(([v, label, hint, swatch]) => (
             <OptionCard key={v} selected={p.undertone === v} onClick={() => set("undertone", v)} title={label} hint={hint} swatch={swatch} />
           ))}
-        </div>
+        </ChoiceGroup>
       </Section>
 
       <Section icon={Droplets} title="Votre type de peau">
-        <div className="space-y-2">
+        <ChoiceGroup label="Votre type de peau">
           {SKIN_TYPES.map(([v, label, hint]) => (
             <OptionCard key={v} selected={p.skinType === v} onClick={() => set("skinType", v)} title={label} hint={hint} />
           ))}
-        </div>
+        </ChoiceGroup>
         <SensitiveToggle checked={p.sensitive} onChange={(v) => set("sensitive", v)} />
       </Section>
 
