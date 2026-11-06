@@ -2,11 +2,11 @@ import Link from "next/link";
 
 export function LegalLinks({ className = "" }: { className?: string }) {
   return (
-    <nav aria-label="Informations légales" className={`flex flex-wrap justify-center gap-x-4 gap-y-1 text-xs text-ink/55 ${className}`}>
-      <Link href="/confidentialite" className="underline-offset-2 hover:text-brand hover:underline">
+    <nav aria-label="Informations légales" className={`flex flex-wrap justify-center gap-x-6 gap-y-1 text-sm text-ink/70 ${className}`}>
+      <Link href="/confidentialite" className="inline-flex min-h-11 items-center rounded-sm underline-offset-4 hover:text-brand hover:underline">
         Confidentialité
       </Link>
-      <Link href="/mentions-legales" className="underline-offset-2 hover:text-brand hover:underline">
+      <Link href="/mentions-legales" className="inline-flex min-h-11 items-center rounded-sm underline-offset-4 hover:text-brand hover:underline">
         Mentions légales
       </Link>
     </nav>

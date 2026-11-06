@@ -7,7 +7,7 @@ export default function NotFound() {
     <div className="flex min-h-[70dvh] flex-col justify-center gap-6">
       <Logo />
       <div>
-        <p className="font-display text-6xl text-caramel">404</p>
+        <p className="font-display text-6xl text-caramel-ink">404</p>
         <h1 className="mt-2 font-display text-[1.85rem] leading-tight text-ink">Cette page n&apos;existe pas</h1>
         <p className="mt-2 text-ink/70">Le lien est peut-être incomplet, ou la page a été déplacée.</p>
       </div>

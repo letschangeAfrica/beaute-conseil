@@ -4,14 +4,21 @@ import { LipstickIcon } from "./icons";
 import { ScoreRing, VerdictPill } from "./ui";
 import type { Verdict } from "@/lib/types";
 
-export function ProductImage({ src, alt, size = 72 }: { src?: string; alt: string; size?: number }) {
+/**
+ * Product photo on a paper tile. Fixed `size` in px by default; `fluid` fills its container
+ * as a square instead (grids and carousels).
+ */
+export function ProductImage({ src, alt, size = 72, fluid = false }: { src?: string; alt: string; size?: number; fluid?: boolean }) {
   return (
-    <div className="grid shrink-0 place-items-center overflow-hidden rounded-xl bg-paper ring-1 ring-caramel/20" style={{ width: size, height: size }}>
+    <div
+      className={`grid shrink-0 place-items-center overflow-hidden bg-paper ring-1 ring-line ${fluid ? "aspect-square w-full rounded-tile" : "rounded-xl"}`}
+      style={fluid ? undefined : { width: size, height: size }}
+    >
       {src ? (
         // eslint-disable-next-line @next/next/no-img-element
-        <img src={src} alt={alt} className="h-full w-full object-contain p-1 mix-blend-multiply" loading="lazy" />
+        <img src={src} alt={alt} className={`h-full w-full object-contain mix-blend-multiply ${fluid ? "p-3" : "p-1"}`} loading="lazy" />
       ) : (
-        <LipstickIcon size={size * 0.42} className="text-caramel" />
+        <LipstickIcon size={fluid ? 40 : size * 0.42} className="text-caramel" aria-hidden="true" />
       )}
     </div>
   );
@@ -32,7 +39,7 @@ export default function ProductCard({ p }: { p: CardData }) {
     <Link href={`/produit/${p.code}`} className="card-interactive group flex items-center gap-3.5 p-3">
       <ProductImage src={p.image} alt={p.name} />
       <div className="min-w-0 flex-1">
-        {p.brand && <p className="truncate text-[0.72rem] font-bold uppercase tracking-[0.12em] text-caramel">{p.brand}</p>}
+        {p.brand && <p className="truncate text-[0.72rem] font-bold uppercase tracking-[0.12em] text-caramel-ink">{p.brand}</p>}
         <p className="line-clamp-2 font-semibold leading-snug text-ink">{p.name}</p>
         <div className="mt-1.5 flex items-center gap-2">
           <VerdictPill verdict={p.verdict} />

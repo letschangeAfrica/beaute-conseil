@@ -75,7 +75,7 @@ export default function BienvenuePage() {
           <ArrowLeft size={20} />
         </button>
         <div className="flex-1">
-          <p className="text-xs font-bold uppercase tracking-[0.18em] text-caramel">
+          <p className="text-xs font-bold uppercase tracking-[0.18em] text-caramel-ink">
             Étape {step + 1} sur {STEPS.length}
           </p>
           <div className="mt-1.5 flex gap-1.5" aria-hidden>

@@ -8,13 +8,16 @@ import type { Verdict } from "@/lib/types";
 
 export function Logo({ light = false }: { light?: boolean }) {
   return (
-    <Link href="/" className="inline-flex items-center gap-2" aria-label="Belle, accueil">
+    <Link href="/" className="-m-1 inline-flex items-center gap-2 rounded-full p-1" aria-label="Belle, accueil">
       <span
-        className={`grid h-9 w-9 place-items-center rounded-full font-display text-xl italic leading-none ${light ? "bg-cream text-brand" : "bg-brand text-cream"}`}
+        aria-hidden="true"
+        className={`grid h-9 w-9 place-items-center rounded-full font-display text-[1.3rem] italic leading-none ${light ? "bg-cream text-brand" : "bg-brand text-cream"}`}
       >
         B
       </span>
-      <span className={`font-display text-2xl tracking-tight ${light ? "text-cream" : "text-brand"}`}>Belle</span>
+      <span aria-hidden="true" className={`font-display text-[1.55rem] font-medium tracking-tight ${light ? "text-cream" : "text-brand"}`}>
+        Belle
+      </span>
     </Link>
   );
 }
@@ -33,21 +36,49 @@ export function PageHeader({ title, subtitle, back = false, eyebrow }: { title: 
           <ArrowLeft size={18} /> Retour
         </button>
       )}
-      {eyebrow && <p className="mb-1 text-xs font-bold uppercase tracking-[0.18em] text-caramel">{eyebrow}</p>}
+      {eyebrow && <p className="eyebrow mb-1.5">{eyebrow}</p>}
       {title && <h1 className="font-display text-[1.85rem] leading-tight text-ink">{title}</h1>}
       {subtitle && <p className="mt-1.5 text-ink/70">{subtitle}</p>}
     </header>
   );
 }
 
-export function SectionTitle({ icon: Icon, children, action }: { icon?: React.ComponentType<{ size?: number; className?: string }>; children: React.ReactNode; action?: React.ReactNode }) {
+/**
+ * Section heading. `display` switches to the Fraunces headline used on editorial pages (home);
+ * the default stays compact for dense screens. `id` lets the section use aria-labelledby.
+ */
+export function SectionTitle({
+  icon: Icon,
+  children,
+  action,
+  eyebrow,
+  id,
+  display = false,
+}: {
+  icon?: React.ComponentType<{ size?: number; className?: string; "aria-hidden"?: boolean | "true" }>;
+  children: React.ReactNode;
+  action?: React.ReactNode;
+  eyebrow?: string;
+  id?: string;
+  display?: boolean;
+}) {
   return (
-    <div className="mb-3 flex items-center justify-between gap-3">
-      <h2 className="flex items-center gap-2 text-[1.05rem] font-bold text-ink">
-        {Icon && <Icon size={20} className="text-brand" />}
-        {children}
-      </h2>
-      {action}
+    <div className={`flex items-end justify-between gap-3 ${display ? "mb-6" : "mb-3"}`}>
+      <div className="min-w-0">
+        {eyebrow && <p className="eyebrow mb-2">{eyebrow}</p>}
+        <h2
+          id={id}
+          className={
+            display
+              ? "font-display text-headline font-normal text-ink text-balance"
+              : "flex items-center gap-2 font-display text-[1.22rem] font-medium leading-snug tracking-tight text-ink"
+          }
+        >
+          {Icon && <Icon size={20} className="shrink-0 text-brand" aria-hidden="true" />}
+          {children}
+        </h2>
+      </div>
+      {action && <div className="shrink-0">{action}</div>}
     </div>
   );
 }

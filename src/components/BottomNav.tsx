@@ -11,11 +11,18 @@ const ITEMS = [
   { href: "/profil", label: "Profil", Icon: UserRound },
 ];
 
+/**
+ * Floating dock, on every screen size. It sits above the iPhone home indicator
+ * (safe-area-inset-bottom); <main> keeps pb-32 so it never covers content.
+ */
 export default function BottomNav() {
   const path = usePathname();
   return (
-    <nav className="fixed inset-x-0 bottom-0 z-30 px-3 pb-[max(env(safe-area-inset-bottom),0.75rem)]" aria-label="Navigation principale">
-      <ul className="mx-auto flex max-w-md items-center justify-between rounded-full bg-white/95 px-2 py-1.5 shadow-lift ring-1 ring-caramel/30 backdrop-blur">
+    <nav
+      className="pointer-events-none fixed inset-x-0 bottom-0 z-30 px-3 pb-[max(env(safe-area-inset-bottom),0.75rem)] print:hidden"
+      aria-label="Navigation principale"
+    >
+      <ul className="pointer-events-auto mx-auto flex max-w-md items-stretch justify-between gap-0.5 rounded-full bg-white/92 p-1.5 shadow-float ring-1 ring-line backdrop-blur-md supports-[not(backdrop-filter:blur(1px))]:bg-white">
         {ITEMS.map(({ href, label, Icon }) => {
           const active = href === "/" ? path === "/" : path.startsWith(href);
           return (
@@ -23,14 +30,12 @@ export default function BottomNav() {
               <Link
                 href={href}
                 aria-current={active ? "page" : undefined}
-                className={`flex flex-col items-center gap-0.5 rounded-full py-1.5 text-[0.7rem] font-semibold transition ${
-                  active ? "text-brand" : "text-ink/55 hover:text-ink"
+                className={`flex min-h-12 flex-col items-center justify-center gap-0.5 rounded-full px-1 py-1.5 text-[0.7rem] font-semibold leading-none transition-colors duration-150 ${
+                  active ? "bg-brand-soft text-brand" : "text-ink/70 hover:bg-paper hover:text-ink"
                 }`}
               >
-                <span className={`grid h-8 w-12 place-items-center rounded-full transition ${active ? "bg-gold/70" : ""}`}>
-                  <Icon size={21} strokeWidth={active ? 2.2 : 1.8} />
-                </span>
-                {label}
+                <Icon size={21} strokeWidth={active ? 2.1 : 1.75} aria-hidden="true" />
+                <span className="mt-0.5">{label}</span>
               </Link>
             </li>
           );

@@ -225,7 +225,7 @@ export default function ProduitPage({ params }: { params: Promise<{ code: string
         <div className="flex gap-4 p-4">
           <ProductImage src={p.image} alt={p.name} size={116} />
           <div className="min-w-0 flex-1 py-1">
-            {p.brand && <p className="text-xs font-bold uppercase tracking-[0.14em] text-caramel">{p.brand}</p>}
+            {p.brand && <p className="text-xs font-bold uppercase tracking-[0.14em] text-caramel-ink">{p.brand}</p>}
             <h1 className="mt-0.5 font-display text-2xl leading-tight">{p.name}</h1>
             {p.quantity && <p className="mt-1 text-sm text-ink/55">{p.quantity}</p>}
           </div>
