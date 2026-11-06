@@ -237,3 +237,17 @@ html[data-camera="on"] .bottom-nav {
 html:has([data-sticky-summary="on"]) {
   scroll-padding-top: 5.5rem;
 }
+
+/* ---------- Chat ---------- */
+
+/* The composer sits just above the floating navigation and the iPhone home indicator. */
+.chat-composer {
+  bottom: calc(max(env(safe-area-inset-bottom), 0.75rem) + 4.6rem);
+}
+/* Phone keyboard open (composer focused on a touch screen): hide the navigation, composer drops down. */
+html[data-keyboard="on"] .bottom-nav {
+  display: none;
+}
+html[data-keyboard="on"] .chat-composer {
+  bottom: 0.5rem;
+}

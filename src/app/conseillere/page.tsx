@@ -1,20 +1,13 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { ArrowUp, MessageCircleQuestion, RotateCcw, UserRound } from "lucide-react";
-import ProductCard, { type CardData } from "@/components/ProductCard";
-import { FoundationIcon, LipstickIcon, MascaraIcon, CreamJarIcon } from "@/components/icons";
-import { Notice, Spinner } from "@/components/ui";
+import { ArrowDown, RotateCcw } from "lucide-react";
+import { ChatEmpty, ProfileSummary, SUGGESTIONS, SuggestionButton } from "@/components/chat/ChatEmpty";
+import { Composer } from "@/components/chat/Composer";
+import { BelleAvatar, BelleMessage, type Msg, UserBubble } from "@/components/chat/MessageBubble";
 import type { ChatEvent } from "@/lib/types";
 import { KEYS, readLocal, useProfile, writeLocal } from "@/lib/useLocal";
 import { errorMessage } from "@/lib/utils";
-
-interface Msg {
-  role: "user" | "assistant";
-  content: string;
-  products?: CardData[];
-  status?: string;
-}
 
 /** Messages kept on the device. */
 const MAX_SAVED = 60;
@@ -28,44 +21,8 @@ function recentTurns(history: Msg[]) {
   return turns.map(({ role, content }) => ({ role, content: content.slice(0, 8000) }));
 }
 
-const SUGGESTIONS = [
-  { text: "Quel fond de teint pour moi à moins de 25 € ?", Icon: FoundationIcon },
-  { text: "Un mascara qui ne coule pas, pour yeux sensibles", Icon: MascaraIcon },
-  { text: "Quelle couleur de rouge à lèvres pour un mariage ?", Icon: LipstickIcon },
-  { text: "Une routine simple pour peau mixte", Icon: CreamJarIcon },
-];
-
-/** Minimal formatting: **bold**, "- " bullets and line breaks. */
-function Formatted({ text }: { text: string }) {
-  return (
-    <div className="space-y-1.5">
-      {text.split("\n").map((line, i) => {
-        if (!line.trim()) return null;
-        const bullet = /^\s*[-•*]\s+/.test(line);
-        const body = line.replace(/^\s*[-•*]\s+/, "");
-        const parts = body.split(/(\*\*[^*]+\*\*)/g).map((part, j) =>
-          part.startsWith("**") && part.endsWith("**") ? <b key={j}>{part.slice(2, -2)}</b> : <span key={j}>{part}</span>,
-        );
-        return bullet ? (
-          <p key={i} className="flex gap-2 pl-1">
-            <span className="mt-2.5 h-1.5 w-1.5 shrink-0 rounded-full bg-caramel" />
-            <span>{parts}</span>
-          </p>
-        ) : (
-          <p key={i}>{parts}</p>
-        );
-      })}
-    </div>
-  );
-}
-
-function Avatar() {
-  return (
-    <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-brand font-display text-lg italic text-cream" aria-hidden>
-      B
-    </span>
-  );
-}
+const reducedMotion = () => typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+const nearBottom = () => window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 160;
 
 export default function ConseillerePage() {
   const [profile, , ready] = useProfile();
@@ -73,7 +30,11 @@ export default function ConseillerePage() {
   const [loaded, setLoaded] = useState(false);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
-  const endRef = useRef<HTMLDivElement>(null);
+  const [unread, setUnread] = useState(false);
+  const [announce, setAnnounce] = useState("");
+  const inputRef = useRef<HTMLTextAreaElement | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
+  const followRef = useRef(true); // follow new content only when she is already near the bottom
 
   // Restore the conversation saved on this device.
   useEffect(() => {
@@ -87,17 +48,44 @@ export default function ConseillerePage() {
     writeLocal(KEYS.chat, messages.length ? messages.slice(-MAX_SAVED).map((m) => ({ ...m, status: undefined })) : null);
   }, [messages, busy, loaded]);
 
+  // Smart scrolling.
   useEffect(() => {
-    endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
-  }, [messages]);
+    const onScroll = () => {
+      followRef.current = nearBottom();
+      if (followRef.current) setUnread(false);
+    };
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
 
-  async function send(text: string) {
+  const toBottom = useCallback((smooth: boolean) => {
+    window.scrollTo({ top: document.documentElement.scrollHeight, behavior: smooth && !reducedMotion() ? "smooth" : "auto" });
+    followRef.current = true;
+    setUnread(false);
+  }, []);
+
+  useEffect(() => {
+    if (!messages.length) return;
+    if (followRef.current) toBottom(!busy);
+    else setUnread(true);
+  }, [messages, busy, toBottom]);
+
+  // Stop any request when leaving the page.
+  useEffect(() => () => abortRef.current?.abort(), []);
+
+  async function send(text: string, base: Msg[] = messages) {
     const question = text.trim();
     if (!question || busy) return;
-    const history: Msg[] = [...messages, { role: "user", content: question }];
+    const history: Msg[] = [...base, { role: "user", content: question }];
     setMessages([...history, { role: "assistant", content: "", status: "Belle réfléchit…" }]);
     setInput("");
     setBusy(true);
+    setAnnounce("Belle prépare sa réponse.");
+    followRef.current = true;
+    inputRef.current?.focus();
+
+    const controller = new AbortController();
+    abortRef.current = controller;
 
     const update = (fn: (m: Msg) => Msg) =>
       setMessages((prev) => {
@@ -114,6 +102,7 @@ export default function ConseillerePage() {
           profile,
           messages: recentTurns(history),
         }),
+        signal: controller.signal,
       });
       if (!res.ok || !res.body) {
         const json = await res.json().catch(() => ({}));
@@ -145,133 +134,130 @@ export default function ConseillerePage() {
               });
               break;
             case "error":
-              update((m) => ({ ...m, content: m.content + `\n\n${ev.text}`, status: undefined }));
+              // Its own paragraph, shown as a notice under the answer rather than inside Belle's words.
+              update((m) => ({ ...m, error: m.error ? `${m.error}\n\n${ev.text}` : ev.text, status: undefined }));
               break;
           }
         }
       }
+      setAnnounce("Belle a répondu.");
     } catch (e) {
-      // Append, never replace: a dropped connection must not erase the part of the answer already shown.
-      update((m) => ({ ...m, content: (m.content ? m.content + "\n\n" : "") + errorMessage(e), status: undefined }));
+      if (controller.signal.aborted) {
+        // She pressed "Arrêter": keep the partial answer, no error.
+        update((m) => ({ ...m, stopped: true }));
+        setAnnounce("Réponse interrompue.");
+      } else {
+        // Append, never replace: a dropped connection must not erase the part of the answer already shown.
+        const msg = errorMessage(e);
+        update((m) => ({ ...m, error: m.error ? `${m.error}\n\n${msg}` : msg, status: undefined }));
+        setAnnounce(`Erreur : ${msg}`);
+      }
     } finally {
       update((m) => ({ ...m, status: undefined }));
       setBusy(false);
+      abortRef.current = null;
     }
   }
 
-  return (
-    <div className="flex min-h-[calc(100dvh-10rem)] flex-col">
-      <header className="mb-5 flex items-center gap-3">
-        <span className="grid h-12 w-12 place-items-center rounded-full bg-brand font-display text-2xl italic text-cream">B</span>
-        <div className="flex-1">
-          <h1 className="font-display text-2xl leading-tight">Belle</h1>
-          <p className="text-sm text-ink/60">Votre conseillère beauté indépendante</p>
-        </div>
-        {messages.length > 0 && (
-          <button className="btn-secondary min-h-10 px-4 text-sm" onClick={() => setMessages([])} disabled={busy}>
-            <RotateCcw size={16} /> Nouveau
-          </button>
-        )}
-      </header>
+  /** Ask the last question again after an error, replacing the failed exchange. */
+  function retry() {
+    const lastUser = messages.map((m) => m.role).lastIndexOf("user");
+    if (lastUser < 0) return;
+    send(messages[lastUser].content, messages.slice(0, lastUser));
+  }
 
-      <div className="flex-1 space-y-4">
-        {messages.length === 0 && (
-          <div className="space-y-4">
-            <div className="flex gap-3">
-              <Avatar />
-              <div className="card rounded-tl-md px-4 py-3">
-                <p>
-                  Bonjour{profile?.name ? ` ${profile.name}` : ""}. Je vous aide à choisir des produits adaptés à votre peau et à trouver le meilleur prix. Que
-                  puis-je faire pour vous ?
-                </p>
-              </div>
-            </div>
-            {ready && !profile && (
-              <Notice>
-                Pour des conseils vraiment personnalisés,{" "}
-                <Link href="/profil" className="font-bold text-brand underline underline-offset-2">
-                  remplissez votre profil
-                </Link>
-                .
-              </Notice>
-            )}
+  const newConversation = () => {
+    setMessages([]);
+    inputRef.current?.focus();
+  };
+
+  const empty = loaded && messages.length === 0;
+  const lastIndex = messages.length - 1;
+
+  return (
+    <div data-layout="wide" className="lg:grid lg:grid-cols-[17rem_minmax(0,1fr)] lg:gap-12 xl:grid-cols-[19rem_minmax(0,1fr)_17rem]">
+      {/* Side panel (desktop): profile, new conversation, starters. */}
+      <aside aria-label="Votre profil et des idées" className="hidden lg:block">
+        <div className="sticky top-6 flex flex-col gap-5">
+          <ProfileSummary profile={profile} ready={ready} />
+          <button type="button" onClick={newConversation} disabled={busy || messages.length === 0} className="btn-secondary w-full">
+            <RotateCcw size={17} aria-hidden="true" /> Nouvelle conversation
+          </button>
+          {!empty && (
             <div>
-              <p className="mb-2 flex items-center gap-2 text-sm font-semibold text-ink/60">
-                <MessageCircleQuestion size={17} /> Suggestions
-              </p>
-              <div className="grid gap-2 sm:grid-cols-2">
-                {SUGGESTIONS.map(({ text, Icon }) => (
-                  <button key={text} onClick={() => send(text)} className="card-interactive flex items-center gap-3 p-3 text-left text-[0.95rem] font-semibold">
-                    <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-paper text-brand ring-1 ring-caramel/30">
-                      <Icon size={20} />
-                    </span>
-                    {text}
-                  </button>
+              <h2 className="eyebrow">Autres idées</h2>
+              <ul className="mt-3 flex flex-col gap-2">
+                {SUGGESTIONS.slice(0, 4).map(({ text, Icon }) => (
+                  <li key={text}>
+                    <SuggestionButton text={text} Icon={Icon} onPick={(t) => send(t)} />
+                  </li>
                 ))}
-              </div>
+              </ul>
             </div>
+          )}
+        </div>
+      </aside>
+
+      <div className="mx-auto flex min-h-[calc(100dvh-10rem)] w-full max-w-[42rem] flex-col">
+        <header className="flex items-center gap-3.5">
+          <BelleAvatar size="lg" />
+          <div className="min-w-0 flex-1">
+            <h1 className="font-display text-[1.7rem] leading-tight text-ink">Belle</h1>
+            <p className="text-sm text-ink/75">Conseillère beauté indépendante</p>
+          </div>
+          {messages.length > 0 && (
+            <button type="button" className="btn-secondary min-h-11 px-4 text-sm lg:hidden" onClick={newConversation} disabled={busy} aria-label="Nouvelle conversation">
+              <RotateCcw size={16} aria-hidden="true" /> Nouveau
+            </button>
+          )}
+        </header>
+
+        <div className="mt-3 lg:hidden">
+          <ProfileSummary profile={profile} ready={ready} compact={!empty || !!profile} />
+        </div>
+
+        <p className="sr-only" aria-live="polite">
+          {announce}
+        </p>
+
+        <div role="log" aria-live="polite" aria-relevant="additions" aria-label="Conversation avec Belle" className="mt-6 flex flex-1 flex-col gap-5">
+          {empty && <ChatEmpty name={profile?.name} onPick={(t) => send(t)} />}
+
+          {messages.map((m, i) => {
+            const streaming = busy && i === lastIndex;
+            return m.role === "user" ? (
+              <UserBubble key={i} m={m} />
+            ) : (
+              // While streaming, the answer is hidden from the log (no word-by-word announcement);
+              // the new key on completion adds it once, in full.
+              <div key={streaming ? `live-${i}` : i} aria-hidden={streaming || undefined}>
+                <BelleMessage m={m} streaming={streaming} onRetry={!busy && i === lastIndex && m.error ? retry : undefined} />
+              </div>
+            );
+          })}
+        </div>
+
+        <p className="mt-6 px-2 text-center text-xs leading-relaxed text-ink/70">
+          Vos messages et votre profil sont traités par une IA (Anthropic) pour vous répondre. La conversation est gardée sur votre téléphone, pas sur nos serveurs. Inutile de
+          partager des informations médicales.{" "}
+          <Link href="/confidentialite" className="font-semibold underline underline-offset-2">
+            En savoir plus
+          </Link>
+        </p>
+
+        {unread && (
+          <div className="pointer-events-none sticky bottom-[calc(max(env(safe-area-inset-bottom),0.75rem)+9rem)] z-20 flex justify-center">
+            <button type="button" onClick={() => toBottom(true)} className="pointer-events-auto btn min-h-11 bg-ink px-4 text-sm text-cream shadow-float hover:bg-ink/90">
+              <ArrowDown size={16} aria-hidden="true" /> Nouveaux messages
+            </button>
           </div>
         )}
 
-        {messages.map((m, i) =>
-          m.role === "user" ? (
-            <div key={i} className="flex justify-end gap-2">
-              <div className="max-w-[85%] rounded-3xl rounded-br-md bg-brand px-4 py-3 text-cream shadow-soft">{m.content}</div>
-              <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-gold text-brand" aria-hidden>
-                <UserRound size={18} />
-              </span>
-            </div>
-          ) : (
-            <div key={i} className="flex gap-3">
-              <Avatar />
-              <div className="min-w-0 flex-1 space-y-2.5">
-                {(m.content || m.status) && (
-                  <div className="card rounded-tl-md px-4 py-3 leading-relaxed">
-                    {m.content && <Formatted text={m.content} />}
-                    {m.status && (
-                      <p className={`text-sm text-ink/55 ${m.content ? "mt-2" : ""}`}>
-                        <Spinner label={m.status} />
-                      </p>
-                    )}
-                  </div>
-                )}
-                {m.products?.map((p) => (
-                  <ProductCard key={p.code} p={p} />
-                ))}
-              </div>
-            </div>
-          ),
-        )}
-        <div ref={endRef} />
+        <Composer value={input} onChange={setInput} onSend={() => send(input)} onStop={() => abortRef.current?.abort()} busy={busy} inputRef={inputRef} />
       </div>
 
-      <p className="mt-4 px-2 text-center text-xs leading-relaxed text-ink/50">
-        Vos messages et votre profil sont traités par une IA (Anthropic) pour vous répondre. La conversation est gardée sur votre téléphone, pas sur nos serveurs. Inutile de partager des
-        informations médicales.{" "}
-        <Link href="/confidentialite" className="underline">
-          En savoir plus
-        </Link>
-      </p>
-
-      <form
-        className="sticky bottom-24 mt-4 flex items-center gap-2 rounded-full bg-white p-1.5 pl-5 shadow-lift ring-1 ring-caramel/40 focus-within:ring-2 focus-within:ring-brand"
-        onSubmit={(e) => {
-          e.preventDefault();
-          send(input);
-        }}
-      >
-        <input
-          className="min-w-0 flex-1 bg-transparent py-2 outline-none placeholder:text-ink/40"
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          placeholder="Posez votre question…"
-          disabled={busy}
-          aria-label="Votre question"
-        />
-        <button className="btn-icon" disabled={busy || !input.trim()} aria-label="Envoyer">
-          <ArrowUp size={20} />
-        </button>
-      </form>
+      {/* Wide screens: a quiet column on the right keeps the conversation centred. */}
+      <div aria-hidden="true" className="hidden xl:block" />
     </div>
   );
 }
