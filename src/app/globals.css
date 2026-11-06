@@ -251,3 +251,8 @@ html[data-keyboard="on"] .bottom-nav {
 html[data-keyboard="on"] .chat-composer {
   bottom: 0.5rem;
 }
+
+/* Profile: the floating save bar sits just above the navigation, like the chat composer. */
+.save-bar {
+  bottom: calc(max(env(safe-area-inset-bottom), 0.75rem) + 4.6rem);
+}

@@ -68,6 +68,7 @@ export function Section({
   children,
   variant = "card",
   id,
+  level = 2,
 }: {
   icon: IconT;
   title: string;
@@ -75,13 +76,16 @@ export function Section({
   children: React.ReactNode;
   variant?: "card" | "plain";
   id?: string;
+  /** Heading level: 2 by default, 3 when the section sits inside a larger group (profile page). */
+  level?: 2 | 3;
 }) {
+  const H = level === 3 ? "h3" : "h2";
   if (variant === "plain") {
     return (
       <section aria-labelledby={id}>
-        <h2 id={id} className="font-display text-[1.3rem] font-normal leading-snug tracking-tight text-ink">
+        <H id={id} className={`font-display font-normal leading-snug tracking-tight text-ink ${level === 3 ? "text-[1.15rem]" : "text-[1.3rem]"}`}>
           {title}
-        </h2>
+        </H>
         {hint && <p className="mt-1 text-[0.95rem] leading-relaxed text-ink/70">{hint}</p>}
         <div className="mt-4">{children}</div>
       </section>

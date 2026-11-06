@@ -23,17 +23,17 @@ export function Avatar({ src, name, size = 44 }: { src?: string | null; name?: s
 export function AccountCard({ callbackUrl = "/profil" }: { callbackUrl?: string }) {
   const { data: session, status } = useSession();
 
-  if (status === "loading") return <Skeleton className="h-20 w-full rounded-2xl" />;
+  if (status === "loading") return <Skeleton className="h-24 w-full rounded-card" />;
 
   if (!session?.user) {
     return (
       <section className="card flex flex-col gap-3 p-5 sm:flex-row sm:items-center">
         <div className="flex-1">
-          <h2 className="font-bold">Votre compte</h2>
-          <p className="mt-0.5 text-sm text-ink/60">Connectez-vous pour retrouver votre profil sur tous vos appareils. Pas de compte ? Le même bouton le crée.</p>
+          <h3 className="font-display text-[1.15rem] leading-tight text-ink">Votre compte</h3>
+          <p className="mt-0.5 text-sm text-ink/75">Connectez-vous pour retrouver votre profil sur tous vos appareils. Pas de compte ? Le même bouton le crée.</p>
         </div>
         <Link href={`/connexion?callbackUrl=${encodeURIComponent(callbackUrl)}`} className="btn bg-white text-ink ring-1 ring-ink/15 hover:bg-paper">
-          <GoogleIcon size={18} /> Continuer avec Google
+          <GoogleIcon size={18} aria-hidden="true" /> Continuer avec Google
         </Link>
       </section>
     );
@@ -46,10 +46,10 @@ export function AccountCard({ callbackUrl = "/profil" }: { callbackUrl?: string 
         <Avatar src={image} name={name} />
         <div className="min-w-0 flex-1">
           <p className="truncate font-bold">{name ?? "Mon compte"}</p>
-          {email && <p className="truncate text-sm text-ink/60">{email}</p>}
+          {email && <p className="truncate text-sm text-ink/75">{email}</p>}
         </div>
-        <button onClick={() => signOut({ redirectTo: "/" }).catch(() => (window.location.href = "/"))} className="btn-secondary px-3 py-2 text-sm" aria-label="Se déconnecter">
-          <LogOut size={16} /> <span className="hidden sm:inline">Se déconnecter</span>
+        <button onClick={() => signOut({ redirectTo: "/" }).catch(() => (window.location.href = "/"))} className="btn-secondary min-w-12 px-3 py-2 text-sm" aria-label="Se déconnecter">
+          <LogOut size={16} aria-hidden="true" /> <span className="hidden sm:inline">Se déconnecter</span>
         </button>
       </div>
       <SyncToggle />
@@ -73,13 +73,13 @@ function SyncToggle() {
   }
 
   return (
-    <label className="flex cursor-pointer items-start gap-3 border-t border-caramel/20 bg-paper/60 p-4">
+    <label className="flex cursor-pointer items-start gap-3 border-t border-line bg-paper/60 p-4 sm:px-5">
       <span className="mt-0.5 grid h-9 w-9 shrink-0 place-items-center rounded-full bg-gold/60 text-brand">
         <RefreshCw size={18} />
       </span>
       <span className="flex-1">
         <span className="block font-semibold">Retrouver mon profil sur tous mes appareils</span>
-        <span className="mt-0.5 block text-sm leading-relaxed text-ink/60">
+        <span className="mt-0.5 block text-sm leading-relaxed text-ink/75">
           {enabled
             ? "Activé : votre profil (dont vos allergies) et vos favoris sont enregistrés dans votre compte."
             : "En activant, vous acceptez que votre profil, dont vos allergies et l'état de votre peau, et vos favoris soient enregistrés dans votre compte. Vous pouvez arrêter quand vous voulez."}{" "}
@@ -89,8 +89,8 @@ function SyncToggle() {
         </span>
       </span>
       <span className="relative mt-1 inline-flex">
-        <input type="checkbox" className="peer sr-only" checked={enabled} disabled={busy} onChange={(e) => change(e.target.checked)} />
-        <span className="h-7 w-12 rounded-full bg-caramel/40 transition peer-checked:bg-brand" />
+        <input type="checkbox" role="switch" aria-checked={enabled} className="peer sr-only" checked={enabled} disabled={busy} onChange={(e) => change(e.target.checked)} />
+        <span aria-hidden="true" className="h-7 w-12 rounded-full bg-ink/25 transition peer-checked:bg-brand peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-brand" />
         <span className="absolute left-1 top-1 h-5 w-5 rounded-full bg-white shadow transition peer-checked:translate-x-5" />
       </span>
     </label>

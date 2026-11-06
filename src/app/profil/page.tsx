@@ -1,45 +1,51 @@
 "use client";
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
-import {
-  Ban,
-  Camera,
-  Check,
-  Droplets,
-  Leaf,
-  MapPin,
-  Palette,
-  ShieldAlert,
-  Sparkles,
-  Target,
-  Trash2,
-  UserRound,
-  Wallet,
-} from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { Droplets, MapPin, Palette, ShieldAlert, Trash2, UserRound, Wallet } from "lucide-react";
 import { signOut, useSession } from "next-auth/react";
 import { AccountCard } from "@/components/AccountCard";
 import { deleteAccountCopy } from "@/components/SyncManager";
 import { LegalLinks } from "@/components/LegalLinks";
-import { Notice, PageHeader, Spinner } from "@/components/ui";
+import { ProfileHero } from "@/components/profile/ProfileHero";
+import { ConfirmDialog, type NavItem, SaveBar, SectionNav, useActiveSection } from "@/components/profile/ProfileParts";
+import { SelfieAnalysis } from "@/components/profile/SelfieAnalysis";
 import { DEFAULT_PROFILE, clearLocalData, useProfile, useSelfieConsent } from "@/lib/useLocal";
 import type { Profile, ShadeAnalysis } from "@/lib/types";
 import { AVOIDS, AllergyEditor, CONCERNS, ChoiceGroup, Chip, OptionCard, PREFS, SKIN_TYPES, Section, SensitiveToggle, ToneGrid, UNDERTONES, toggle } from "@/components/ProfileFields";
 import { resizeImage } from "@/lib/image";
 import { errorMessage, postJson } from "@/lib/utils";
 
+const GROUPS: NavItem[] = [
+  { id: "teint", label: "Mon teint", Icon: Palette },
+  { id: "peau", label: "Ma peau", Icon: Droplets },
+  { id: "evite", label: "Ce que j'évite", Icon: ShieldAlert },
+  { id: "achats", label: "Mes achats", Icon: Wallet },
+  { id: "compte", label: "Compte et données", Icon: UserRound },
+];
+const GROUP_IDS = GROUPS.map((g) => g.id);
+
+const DELETE_TEXT = "Effacer votre profil, vos favoris, la conversation et vos consentements, et vous déconnecter ? La copie enregistrée dans votre compte sera aussi supprimée.";
+
+/** Order-independent snapshot of a profile (object keys sorted at every level, undefined dropped). */
+function canon(v: unknown): string {
+  return JSON.stringify(v, (_k, x) =>
+    x && typeof x === "object" && !Array.isArray(x) ? Object.fromEntries(Object.entries(x).sort(([a], [b]) => a.localeCompare(b))) : x,
+  );
+}
+
 export default function ProfilPage() {
   const [saved, save, ready] = useProfile();
   const [p, setP] = useState<Profile>(DEFAULT_PROFILE);
   const [shadeState, setShadeState] = useState<"idle" | "loading" | "error">("idle");
   const [shadeError, setShadeError] = useState("");
-  const router = useRouter();
   const { data: session } = useSession();
   const [consent, setConsent] = useSelfieConsent();
-  const [consentBox, setConsentBox] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [justSaved, setJustSaved] = useState(false);
+  const [announce, setAnnounce] = useState("");
+  const active = useActiveSection(GROUP_IDS);
 
   async function deleteAllData() {
-    if (!window.confirm("Effacer votre profil, vos favoris, la conversation et vos consentements, et vous déconnecter ? La copie enregistrée dans votre compte sera aussi supprimée.")) return;
     if (session) await deleteAccountCopy();
     clearLocalData();
     try {
@@ -59,224 +65,297 @@ export default function ProfilPage() {
     if (ready && googleName && !saved?.name) setP((prev) => (prev.name ? prev : { ...prev, name: googleName }));
   }, [ready, saved?.name, googleName]);
 
-  const set = <K extends keyof Profile>(k: K, v: Profile[K]) => setP((prev) => ({ ...prev, [k]: v }));
+  const set = <K extends keyof Profile>(k: K, v: Profile[K]) => {
+    setJustSaved(false);
+    setP((prev) => ({ ...prev, [k]: v }));
+  };
 
   async function analyzeSelfie(file: File) {
     setShadeState("loading");
     setShadeError("");
+    setAnnounce("Analyse de votre photo en cours.");
     try {
       const { data, mediaType } = await resizeImage(file);
       const a = await postJson<ShadeAnalysis>("/api/shade", { image: data, mediaType, consent: Boolean(consent) });
+      setJustSaved(false);
       setP((prev) => ({ ...prev, skinTone: a.skinTone, undertone: a.undertone, shadeAdvice: a }));
       setShadeState("idle");
+      setAnnounce("Analyse terminée. Votre carnation et votre sous-ton ont été mis à jour. Pensez à enregistrer.");
     } catch (e) {
-      setShadeError(errorMessage(e));
+      const msg = errorMessage(e);
+      setShadeError(msg);
       setShadeState("error");
+      setAnnounce(`L'analyse a échoué. ${msg}`);
     }
   }
 
+  // Unsaved changes: the save bar shows, and leaving the page asks first.
+  const isNew = ready && !saved;
+  const dirty = useMemo(() => ready && (!saved || canon(p) !== canon({ ...DEFAULT_PROFILE, ...saved })), [ready, saved, p]);
+  useEffect(() => {
+    if (!dirty || isNew) return;
+    const warn = (e: BeforeUnloadEvent) => e.preventDefault();
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [dirty, isNew]);
+
   function onSave() {
     save(p);
-    router.push("/");
+    setJustSaved(true);
+    setAnnounce("Profil enregistré. Vos scores en tiennent compte.");
   }
+  useEffect(() => {
+    if (!justSaved) return;
+    const t = window.setTimeout(() => setJustSaved(false), 3000);
+    return () => window.clearTimeout(t);
+  }, [justSaved]);
+
+  const consentSentence = (
+    <p className="text-sm leading-relaxed text-ink/75">
+      En enregistrant, vous acceptez que ces informations, dont vos allergies et l&apos;état de votre peau, servent à personnaliser les scores et les conseils. Elles restent sur votre
+      téléphone et ne sont jamais conservées sur nos serveurs.{" "}
+      <Link href="/confidentialite" className="font-semibold text-brand underline underline-offset-2">
+        Politique de confidentialité
+      </Link>
+    </p>
+  );
 
   return (
-    <div className="space-y-4">
-      <PageHeader eyebrow="Profil beauté" title="Parlez-nous de vous" subtitle="Deux minutes pour des conseils faits pour vous. Vos réponses restent sur votre téléphone." />
-
-      <AccountCard />
-
-      <Section icon={UserRound} title="Votre prénom" hint="Facultatif">
-        <input className="input" value={p.name ?? ""} onChange={(e) => set("name", e.target.value)} placeholder="Ex. Marie" autoComplete="given-name" />
-      </Section>
-
-      <section className="card overflow-hidden">
-        <div className="bg-brand p-5 text-cream">
-          <div className="flex gap-3">
-            <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-cream/15 text-gold">
-              <Sparkles size={20} />
-            </span>
-            <div>
-              <h2 className="font-bold">Analyse de teint par photo</h2>
-              <p className="mt-0.5 text-sm text-cream/80">Selfie à la lumière du jour, sans maquillage ni filtre. La photo sert uniquement à l&apos;analyse et n&apos;est pas conservée.</p>
-            </div>
-          </div>
-          {!consent ? (
-            <div className="mt-4 rounded-2xl bg-cream/10 p-4 ring-1 ring-cream/25">
-              <label className="flex cursor-pointer gap-3 text-sm leading-relaxed">
-                <input type="checkbox" checked={consentBox} onChange={(e) => setConsentBox(e.target.checked)} className="mt-1 h-5 w-5 shrink-0 accent-gold" />
-                <span>
-                  J&apos;accepte que ma photo soit envoyée à Anthropic (États-Unis), le service d&apos;intelligence artificielle utilisé par Belle, uniquement pour analyser ma carnation. Belle
-                  ne conserve pas la photo. Je peux retirer mon accord à tout moment en supprimant mes données.{" "}
-                  <Link href="/confidentialite" className="font-semibold text-gold underline">
-                    En savoir plus
-                  </Link>
-                </span>
-              </label>
-              <button className="btn mt-3 w-full bg-cream text-brand hover:bg-gold disabled:opacity-50" disabled={!consentBox} onClick={() => setConsent(new Date().toISOString())}>
-                Continuer
-              </button>
-            </div>
-          ) : (
-          <label className={`btn mt-4 w-full cursor-pointer bg-cream text-brand hover:bg-gold ${shadeState === "loading" ? "pointer-events-none opacity-70" : ""}`}>
-            {shadeState === "loading" ? (
-              <Spinner label="Analyse en cours…" />
-            ) : (
-              <>
-                <Camera size={19} /> {p.shadeAdvice ? "Refaire l'analyse" : "Prendre ou choisir une photo"}
-              </>
-            )}
-            <input
-              type="file"
-              accept="image/*"
-              capture="user"
-              className="sr-only"
-              disabled={shadeState === "loading"}
-              onChange={(e) => e.target.files?.[0] && analyzeSelfie(e.target.files[0])}
-            />
-          </label>
-          )}
-        </div>
-        {shadeState === "error" && (
-          <div className="p-4">
-            <Notice kind="error">{shadeError}</Notice>
-          </div>
-        )}
-        {p.shadeAdvice && (
-          <div className="space-y-3 p-5 text-[0.95rem] leading-relaxed">
-            <p>{p.shadeAdvice.explanation}</p>
-            <p>
-              <b>Fond de teint.</b> {p.shadeAdvice.foundationTips}
-            </p>
-            <div>
-              <p className="mb-1.5 text-sm font-bold text-good">Couleurs qui vous subliment</p>
-              <div className="flex flex-wrap gap-1.5">
-                {p.shadeAdvice.colorsToTry.map((c) => (
-                  <span key={c} className="rounded-full bg-good-soft px-3 py-1 text-sm font-semibold text-good">
-                    {c}
-                  </span>
-                ))}
-              </div>
-            </div>
-            <div>
-              <p className="mb-1.5 text-sm font-bold text-ink/60">Moins flatteuses</p>
-              <div className="flex flex-wrap gap-1.5">
-                {p.shadeAdvice.colorsToAvoid.map((c) => (
-                  <span key={c} className="rounded-full bg-muted-soft px-3 py-1 text-sm font-semibold text-ink/70">
-                    {c}
-                  </span>
-                ))}
-              </div>
-            </div>
-            {p.shadeAdvice.photoQualityNote && <p className="text-sm italic text-ink/60">{p.shadeAdvice.photoQualityNote}</p>}
-            <p className="text-xs text-ink/50">Fiabilité : {p.shadeAdvice.confidence}. Vous pouvez ajuster ci-dessous.</p>
-          </div>
-        )}
-      </section>
-
-      <Section icon={Palette} title="Votre carnation">
-        <ToneGrid value={p.skinTone} onChange={(v) => set("skinTone", v)} />
-      </Section>
-
-      <Section icon={Palette} title="Votre sous-ton" hint="Regardez les veines de votre poignet à la lumière du jour.">
-        <ChoiceGroup label="Votre sous-ton">
-          {UNDERTONES.map(([v, label, hint, swatch]) => (
-            <OptionCard key={v} selected={p.undertone === v} onClick={() => set("undertone", v)} title={label} hint={hint} swatch={swatch} />
-          ))}
-        </ChoiceGroup>
-      </Section>
-
-      <Section icon={Droplets} title="Votre type de peau">
-        <ChoiceGroup label="Votre type de peau">
-          {SKIN_TYPES.map(([v, label, hint]) => (
-            <OptionCard key={v} selected={p.skinType === v} onClick={() => set("skinType", v)} title={label} hint={hint} />
-          ))}
-        </ChoiceGroup>
-        <SensitiveToggle checked={p.sensitive} onChange={(v) => set("sensitive", v)} />
-      </Section>
-
-      <Section icon={Target} title="Vos préoccupations" hint="Plusieurs choix possibles">
-        <div className="flex flex-wrap gap-2">
-          {CONCERNS.map(([v, label]) => (
-            <Chip key={v} on={p.concerns.includes(v)} onClick={() => set("concerns", toggle(p.concerns, v))}>
-              {label}
-            </Chip>
-          ))}
-        </div>
-      </Section>
-
-      <Section icon={Ban} title="Ingrédients à éviter" hint="Les produits qui en contiennent perdront des points.">
-        <div className="flex flex-wrap gap-2">
-          {AVOIDS.map(([v, label]) => (
-            <Chip key={v} on={p.avoid.includes(v)} onClick={() => set("avoid", toggle(p.avoid, v))}>
-              {label}
-            </Chip>
-          ))}
-        </div>
-        <p className="mb-2 mt-5 flex items-center gap-2 text-sm font-bold">
-          <Leaf size={16} className="text-good" /> Mes préférences
-        </p>
-        <div className="flex flex-wrap gap-2">
-          {PREFS.map(([v, label]) => (
-            <Chip key={v} on={p.prefs.includes(v)} onClick={() => set("prefs", toggle(p.prefs, v))}>
-              {label}
-            </Chip>
-          ))}
-        </div>
-      </Section>
-
-      <Section icon={ShieldAlert} title="Allergies connues" hint="Nom de l'ingrédient tel qu'écrit sur l'emballage, par exemple linalool ou lanolin. Ces produits seront signalés « À éviter ».">
-        <AllergyEditor allergies={p.allergies} onChange={(v) => set("allergies", v)} />
-      </Section>
-
-      <Section icon={Wallet} title="Budget par produit">
-        <div className="flex items-baseline justify-between">
-          <span className="text-sm text-ink/60">Jusqu&apos;à</span>
-          <span className="font-display text-3xl text-brand tabular-nums">{p.budget} €</span>
-        </div>
-        <input
-          type="range"
-          min={5}
-          max={100}
-          step={5}
-          value={p.budget}
-          onChange={(e) => set("budget", Number(e.target.value))}
-          className="mt-2 w-full accent-brand"
-          aria-label="Budget maximum par produit"
-        />
-        <div className="mt-1 flex justify-between text-xs text-ink/45">
-          <span>5 €</span>
-          <span>100 €</span>
-        </div>
-        <div className="relative mt-5">
-          <MapPin size={18} className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-ink/40" />
-          <input className="input pl-11" value={p.city ?? ""} onChange={(e) => set("city", e.target.value)} placeholder="Votre ville (pour les prix près de chez vous)" autoComplete="address-level2" />
-        </div>
-      </Section>
-
-      <p className="px-1 text-sm leading-relaxed text-ink/65">
-        En enregistrant, vous acceptez que ces informations, dont vos allergies et l&apos;état de votre peau, servent à personnaliser les scores et les conseils. Elles restent sur votre
-        téléphone et ne sont jamais conservées sur nos serveurs.{" "}
-        <Link href="/confidentialite" className="font-semibold text-brand underline">
-          Politique de confidentialité
-        </Link>
+    <div data-layout="wide" className="lg:grid lg:grid-cols-[17rem_minmax(0,1fr)] lg:items-start lg:gap-12 xl:grid-cols-[18rem_minmax(0,48rem)] xl:justify-center xl:gap-16">
+      <p className="sr-only" aria-live="polite">
+        {announce}
       </p>
 
-      <div className="sticky bottom-24 z-10 pt-2">
-        <button className="btn-primary w-full text-lg shadow-lift" onClick={onSave}>
-          <Check size={20} /> Enregistrer mon profil
-        </button>
+      {/* Left (desktop): title, then one compact sticky card with the sections and the save action. */}
+      <aside className="flex flex-col gap-6 lg:sticky lg:top-6">
+        <header>
+          <p className="eyebrow">Profil beauté</p>
+          <h1 className="mt-2 font-display text-headline font-normal text-ink lg:text-[1.9rem] lg:leading-[1.1]">
+            Parlez-nous <span className="whitespace-nowrap italic text-brand">de vous</span>
+          </h1>
+          <p className="mt-2 leading-relaxed text-ink/75 lg:text-[0.95rem]">Vos réponses restent sur votre téléphone. Chaque score de Belle en dépend.</p>
+        </header>
+        <div className="hidden lg:block">
+          <SectionNav
+            items={GROUPS}
+            active={active}
+            variant="side"
+            footer={<SaveBar dirty={dirty} justSaved={justSaved} onSave={onSave} isNew={isNew} variant="inline" />}
+          />
+        </div>
+      </aside>
+
+      {/* Right: the beauty ID card, then the groups. */}
+      <div className="mt-6 flex min-w-0 flex-col gap-section lg:mt-0">
+        <div className="flex flex-col gap-6">
+          <ProfileHero saved={saved} ready={ready} />
+          <div className="lg:hidden">
+            <SectionNav items={GROUPS} active={active} variant="chips" />
+          </div>
+        </div>
+
+        <Group id="teint" title="Mon teint" intro="Pour les fonds de teint, correcteurs et poudres.">
+          <SelfieAnalysis consent={consent} onConsent={() => setConsent(new Date().toISOString())} state={shadeState} error={shadeError} onFile={analyzeSelfie} advice={p.shadeAdvice} />
+          <Section variant="plain" level={3} icon={UserRound} id="tone-title" title="Votre carnation" hint="La couleur de votre peau, sur la joue, à la lumière du jour.">
+            <ToneGrid value={p.skinTone} onChange={(v) => set("skinTone", v)} labelledBy="tone-title" />
+          </Section>
+          <Section variant="plain" level={3} icon={UserRound} id="under-title" title="Votre sous-ton" hint="Regardez les veines de votre poignet à la lumière du jour.">
+            <ChoiceGroup labelledBy="under-title" className="grid gap-2.5 sm:grid-cols-2">
+              {UNDERTONES.map(([v, label, hint, swatch]) => (
+                <OptionCard key={v} selected={p.undertone === v} onClick={() => set("undertone", v)} title={label} hint={hint} swatch={swatch} />
+              ))}
+            </ChoiceGroup>
+          </Section>
+        </Group>
+
+        <Group id="peau" title="Ma peau">
+          <Section variant="plain" level={3} icon={UserRound} id="type-title" title="Votre type de peau">
+            <ChoiceGroup labelledBy="type-title" className="grid gap-2.5 sm:grid-cols-2">
+              {SKIN_TYPES.map(([v, label, hint]) => (
+                <OptionCard key={v} selected={p.skinType === v} onClick={() => set("skinType", v)} title={label} hint={hint} />
+              ))}
+            </ChoiceGroup>
+            <SensitiveToggle checked={p.sensitive} onChange={(v) => set("sensitive", v)} hint="Rougeurs, picotements ou réactions fréquentes." />
+          </Section>
+          <Section variant="plain" level={3} icon={UserRound} id="concerns-title" title="Vos préoccupations" hint="Plusieurs choix possibles.">
+            <div role="group" aria-labelledby="concerns-title" className="flex flex-wrap gap-2">
+              {CONCERNS.map(([v, label]) => (
+                <Chip key={v} on={p.concerns.includes(v)} onClick={() => set("concerns", toggle(p.concerns, v))}>
+                  {label}
+                </Chip>
+              ))}
+            </div>
+          </Section>
+        </Group>
+
+        <Group id="evite" title="Ce que j'évite">
+          {/* Safety first: allergies get the danger treatment. */}
+          <section aria-labelledby="allergies-title" className="rounded-card bg-danger-soft/50 p-5 ring-1 ring-danger/20 sm:p-6">
+            <h3 id="allergies-title" className="flex items-center gap-2.5 font-display text-[1.2rem] leading-tight text-ink">
+              <ShieldAlert size={21} aria-hidden="true" className="shrink-0 text-danger" /> Allergies connues
+            </h3>
+            <p className="mt-2 text-[0.95rem] leading-relaxed text-ink/80">
+              Le nom de l&apos;ingrédient tel qu&apos;il est écrit sur l&apos;emballage, par exemple linalool ou lanolin. Les produits qui en contiennent sont signalés{" "}
+              <strong className="font-semibold text-danger">« À éviter »</strong>, avec une alerte.
+            </p>
+            <div className="mt-4">
+              <AllergyEditor allergies={p.allergies} onChange={(v) => set("allergies", v)} />
+            </div>
+          </section>
+          <Section variant="plain" level={3} icon={UserRound} id="avoid-title" title="Ingrédients à éviter" hint="Les produits qui en contiennent perdront des points.">
+            <div role="group" aria-labelledby="avoid-title" className="flex flex-wrap gap-2">
+              {AVOIDS.map(([v, label]) => (
+                <Chip key={v} on={p.avoid.includes(v)} onClick={() => set("avoid", toggle(p.avoid, v))}>
+                  {label}
+                </Chip>
+              ))}
+            </div>
+          </Section>
+          <Section variant="plain" level={3} icon={UserRound} id="prefs-title" title="Mes préférences">
+            <div role="group" aria-labelledby="prefs-title" className="flex flex-wrap gap-2">
+              {PREFS.map(([v, label]) => (
+                <Chip key={v} on={p.prefs.includes(v)} onClick={() => set("prefs", toggle(p.prefs, v))}>
+                  {label}
+                </Chip>
+              ))}
+            </div>
+          </Section>
+        </Group>
+
+        <Group id="achats" title="Mes achats">
+          <BudgetField value={p.budget} onChange={(v) => set("budget", v)} />
+          <div>
+            <label htmlFor="city" className="font-display text-[1.15rem] leading-snug text-ink">
+              Votre ville
+            </label>
+            <p className="mt-1 text-[0.95rem] text-ink/70">Pour les prix relevés près de chez vous.</p>
+            <div className="relative mt-3">
+              <MapPin size={18} aria-hidden="true" className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-ink/60" />
+              <input id="city" className="input pl-11" value={p.city ?? ""} onChange={(e) => set("city", e.target.value)} placeholder="Ex. Lyon" autoComplete="address-level2" />
+            </div>
+          </div>
+          {consentSentence}
+        </Group>
+
+        <Group id="compte" title="Compte et données">
+          <div>
+            <label htmlFor="name" className="font-display text-[1.15rem] leading-snug text-ink">
+              Votre prénom <span className="font-sans text-sm text-ink/70">(facultatif)</span>
+            </label>
+            <p className="mt-1 text-[0.95rem] text-ink/70">Pour que Belle vous salue par votre prénom.</p>
+            <input id="name" className="input mt-3" value={p.name ?? ""} onChange={(e) => set("name", e.target.value)} placeholder="Ex. Marie" autoComplete="given-name" />
+          </div>
+
+          <AccountCard />
+
+          {/* Danger zone: separated and calm, clearly destructive. */}
+          <section aria-labelledby="data-title" className="rounded-card border border-dashed border-danger/35 p-5 sm:p-6">
+            <h3 id="data-title" className="font-display text-[1.2rem] leading-tight text-ink">
+              Vos données
+            </h3>
+            <p className="mt-2 text-sm leading-relaxed text-ink/75">
+              Efface votre profil, vos favoris, la conversation et vos consentements (sur ce téléphone et dans votre compte), et vous déconnecte.
+            </p>
+            <button type="button" onClick={() => setConfirmOpen(true)} className="btn mt-4 w-full bg-danger-soft text-danger ring-1 ring-danger/25 hover:bg-danger hover:text-white sm:w-auto">
+              <Trash2 size={18} aria-hidden="true" /> Supprimer mes données
+            </button>
+          </section>
+
+          <LegalLinks />
+        </Group>
+
+        {/* Room for the floating save bar (phones, tablets, small laptops). */}
+        <div aria-hidden="true" className={`lg:hidden ${dirty || justSaved ? "h-16" : "h-0"}`} />
       </div>
 
-      <section className="card mt-6 p-5">
-        <h2 className="font-bold">Vos données</h2>
-        <p className="mt-1 text-sm text-ink/60">Efface votre profil, vos favoris, la conversation et vos consentements (sur ce téléphone et dans votre compte), et vous déconnecte.</p>
-        <button onClick={deleteAllData} className="btn mt-3 w-full bg-danger-soft text-danger ring-1 ring-danger/25 hover:bg-danger hover:text-white">
-          <Trash2 size={18} /> Supprimer mes données
-        </button>
-      </section>
+      <SaveBar dirty={dirty} justSaved={justSaved} onSave={onSave} isNew={isNew} variant="floating" />
 
-      <LegalLinks className="pt-2" />
+      <ConfirmDialog
+        open={confirmOpen}
+        title="Supprimer vos données ?"
+        text={DELETE_TEXT}
+        confirmLabel="Supprimer"
+        onCancel={() => setConfirmOpen(false)}
+        onConfirm={() => {
+          setConfirmOpen(false);
+          deleteAllData();
+        }}
+      />
+    </div>
+  );
+}
+
+/* ---------- Pieces ---------- */
+
+function Group({ id, title, intro, children }: { id: string; title: string; intro?: string; children: React.ReactNode }) {
+  return (
+    <section id={id} aria-labelledby={`${id}-title`} className="scroll-mt-20 lg:scroll-mt-8">
+      <h2 id={`${id}-title`} tabIndex={-1} className="font-display text-headline font-normal text-ink outline-none focus-visible:outline-2">
+        {title}
+      </h2>
+      {intro && <p className="mt-1 text-ink/70">{intro}</p>}
+      <div className="mt-6 flex flex-col gap-8">{children}</div>
+    </section>
+  );
+}
+
+/** Slider with the value in display type and its value in words, plus a typed alternative. */
+function BudgetField({ value, onChange }: { value: number; onChange: (v: number) => void }) {
+  const [typed, setTyped] = useState(String(value));
+  useEffect(() => setTyped(String(value)), [value]);
+  const commit = () => {
+    const n = Math.round(Number(typed.replace(",", ".")) / 5) * 5;
+    const v = Number.isFinite(n) && n > 0 ? Math.min(100, Math.max(5, n)) : value;
+    onChange(v);
+    setTyped(String(v));
+  };
+  return (
+    <div className="card p-5 sm:p-6">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <label htmlFor="budget" className="flex items-center gap-2 font-display text-[1.15rem] leading-snug text-ink">
+            <Wallet size={19} aria-hidden="true" className="text-brand" /> Budget maximum par produit
+          </label>
+          <p className="mt-1 text-sm text-ink/70">Les produits plus chers perdent des points.</p>
+        </div>
+        <p className="shrink-0 font-display text-[2.2rem] leading-none tabular-nums text-brand" aria-hidden="true">
+          {value} €
+        </p>
+      </div>
+      <input
+        id="budget"
+        type="range"
+        min={5}
+        max={100}
+        step={5}
+        value={value}
+        onChange={(e) => onChange(Number(e.target.value))}
+        aria-valuetext={`${value} euros`}
+        className="mt-5 h-11 w-full cursor-pointer accent-brand"
+      />
+      <div className="flex justify-between text-sm text-ink/70" aria-hidden="true">
+        <span>5 €</span>
+        <span>100 €</span>
+      </div>
+      <div className="mt-4 flex items-center gap-2">
+        <label htmlFor="budget-typed" className="text-sm text-ink/75">
+          Ou saisissez un montant
+        </label>
+        <div className="relative w-28">
+          <input
+            id="budget-typed"
+            inputMode="numeric"
+            className="input pr-9 text-right tabular-nums"
+            value={typed}
+            onChange={(e) => setTyped(e.target.value.replace(/[^\d,.]/g, ""))}
+            onBlur={commit}
+            onKeyDown={(e) => e.key === "Enter" && commit()}
+          />
+          <span aria-hidden="true" className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-ink/70">
+            €
+          </span>
+        </div>
+      </div>
     </div>
   );
 }
