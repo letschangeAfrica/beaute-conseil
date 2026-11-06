@@ -1,17 +1,26 @@
-export type SkinType = "grasse" | "seche" | "mixte" | "normale";
-export type SkinTone = "tres-clair" | "clair" | "moyen" | "mat" | "fonce" | "tres-fonce";
-export type Undertone = "chaud" | "froid" | "neutre" | "olive" | "inconnu";
+/*
+ * Single source of truth for profile enums. The TS types below and the zod
+ * schemas in ./schemas.ts are both derived from these arrays — add a value
+ * here and it is accepted everywhere.
+ */
+export const SKIN_TYPE_VALUES = ["grasse", "seche", "mixte", "normale"] as const;
+export const SKIN_TONE_VALUES = ["tres-clair", "clair", "moyen", "mat", "fonce", "tres-fonce"] as const;
+export const UNDERTONE_VALUES = ["chaud", "froid", "neutre", "olive", "inconnu"] as const;
+export const CONCERN_VALUES = ["acne", "taches", "rides", "rougeurs", "pores", "teint-terne"] as const;
+export const AVOID_VALUES = ["parfum", "parabenes", "silicones", "sulfates", "alcool", "huiles-essentielles", "nano"] as const;
+export const PREF_VALUES = ["vegan", "bio"] as const;
+export const CONFIDENCE_VALUES = ["faible", "moyenne", "elevee"] as const;
 
-export type Concern = "acne" | "taches" | "rides" | "rougeurs" | "pores" | "teint-terne";
-export type Avoid =
-  | "parfum"
-  | "parabenes"
-  | "silicones"
-  | "sulfates"
-  | "alcool"
-  | "huiles-essentielles"
-  | "nano";
-export type Pref = "vegan" | "bio";
+export type SkinType = (typeof SKIN_TYPE_VALUES)[number];
+export type SkinTone = (typeof SKIN_TONE_VALUES)[number];
+export type Undertone = (typeof UNDERTONE_VALUES)[number];
+export type Concern = (typeof CONCERN_VALUES)[number];
+export type Avoid = (typeof AVOID_VALUES)[number];
+export type Pref = (typeof PREF_VALUES)[number];
+export type Confidence = (typeof CONFIDENCE_VALUES)[number];
+
+/** Result of the selfie analysis — derived from ShadeSchema (type-only import, no runtime cycle). */
+export type ShadeAnalysis = import("./schemas").ShadeAnalysis;
 
 export interface Profile {
   name?: string;
@@ -31,16 +40,6 @@ export interface Profile {
   shadeAdvice?: ShadeAnalysis;
 }
 
-export interface ShadeAnalysis {
-  skinTone: SkinTone;
-  undertone: Undertone;
-  confidence: "faible" | "moyenne" | "elevee";
-  explanation: string;
-  foundationTips: string;
-  colorsToTry: string[];
-  colorsToAvoid: string[];
-  photoQualityNote: string;
-}
 
 export interface Product {
   code: string;

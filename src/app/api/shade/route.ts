@@ -2,23 +2,13 @@ import Anthropic from "@anthropic-ai/sdk";
 import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod";
 import { z } from "zod";
 import { FALLBACK, MODEL, anthropic, hasApiKey } from "@/lib/claude";
+import { ShadeSchema } from "@/lib/schemas";
 
 export const maxDuration = 60;
 
 const Body = z.object({
   image: z.string().min(100).max(8_000_000),
   mediaType: z.enum(["image/jpeg", "image/png", "image/webp"]),
-});
-
-const ShadeSchema = z.object({
-  skinTone: z.enum(["tres-clair", "clair", "moyen", "mat", "fonce", "tres-fonce"]),
-  undertone: z.enum(["chaud", "froid", "neutre", "olive", "inconnu"]),
-  confidence: z.enum(["faible", "moyenne", "elevee"]),
-  explanation: z.string().describe("2 phrases simples expliquant ce qui a été observé"),
-  foundationTips: z.string().describe("Conseils concrets pour choisir sa teinte de fond de teint, 2-3 phrases"),
-  colorsToTry: z.array(z.string()).describe("4 à 6 couleurs de rouge à lèvres / fard qui la mettront en valeur"),
-  colorsToAvoid: z.array(z.string()).describe("2 à 4 couleurs moins flatteuses"),
-  photoQualityNote: z.string().describe("Remarque sur l'éclairage de la photo, ou chaîne vide si bonne"),
 });
 
 const SYSTEM = `Tu es une maquilleuse professionnelle bienveillante. On te montre un selfie pour conseiller des teintes de maquillage.

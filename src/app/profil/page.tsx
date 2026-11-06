@@ -17,6 +17,8 @@ import {
   Wallet,
   X,
 } from "lucide-react";
+import { useSession } from "next-auth/react";
+import { AccountCard } from "@/components/AccountCard";
 import { Notice, PageHeader, Spinner } from "@/components/ui";
 import { DEFAULT_PROFILE, useProfile } from "@/lib/useLocal";
 import type { Avoid, Concern, Pref, Profile, ShadeAnalysis, SkinTone, SkinType, Undertone } from "@/lib/types";
@@ -130,10 +132,17 @@ export default function ProfilPage() {
   const [shadeState, setShadeState] = useState<"idle" | "loading" | "error">("idle");
   const [shadeError, setShadeError] = useState("");
   const router = useRouter();
+  const { data: session } = useSession();
 
   useEffect(() => {
     if (ready && saved) setP({ ...DEFAULT_PROFILE, ...saved });
   }, [ready, saved]);
+
+  // Pre-fill the first name from the Google account, without overwriting one she typed.
+  const googleName = session?.user?.name?.split(" ")[0];
+  useEffect(() => {
+    if (ready && googleName && !saved?.name) setP((prev) => (prev.name ? prev : { ...prev, name: googleName }));
+  }, [ready, saved?.name, googleName]);
 
   const set = <K extends keyof Profile>(k: K, v: Profile[K]) => setP((prev) => ({ ...prev, [k]: v }));
 
@@ -172,6 +181,8 @@ export default function ProfilPage() {
   return (
     <div className="space-y-4">
       <PageHeader eyebrow="Profil beauté" title="Parlez-nous de vous" subtitle="Deux minutes pour des conseils faits pour vous. Vos réponses restent sur votre téléphone." />
+
+      <AccountCard />
 
       <Section icon={UserRound} title="Votre prénom" hint="Facultatif">
         <input className="input" value={p.name ?? ""} onChange={(e) => set("name", e.target.value)} placeholder="Ex. Marie" autoComplete="given-name" />

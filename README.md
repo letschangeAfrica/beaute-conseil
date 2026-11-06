@@ -26,6 +26,18 @@ Open http://localhost:3000.
 
 Without an API key, search / scores / scanner / shop prices still work; the selfie analysis, live prices and chat show a "clé API manquante" message.
 
+## Sign in with Google
+
+Optional accounts use [Auth.js](https://authjs.dev). Google is the only method, so the same button signs in and signs up. There's no database: the session is an encrypted cookie, and the beauty profile stays in the browser.
+
+1. In [Google Cloud Console](https://console.cloud.google.com/apis/credentials), open *OAuth consent screen* and set it up (External, app name "Belle").
+2. Go to *Credentials* → *Create credentials* → *OAuth client ID* → *Web application*.
+3. Under *Authorized redirect URIs*, add `http://localhost:3000/api/auth/callback/google`, plus `https://<your-domain>/api/auth/callback/google` once deployed.
+4. Copy the client ID and secret into `.env.local` as `AUTH_GOOGLE_ID` and `AUTH_GOOGLE_SECRET`. Run `npx auth secret` to generate `AUTH_SECRET`.
+5. On Vercel, add the same three variables.
+
+Without these variables the rest of the app works, and the sign-in page shows "La connexion Google n'est pas encore configurée".
+
 ## Use it on a phone
 
 The camera (scanner, selfie) only works over HTTPS. The easiest path is to deploy for free on Vercel:

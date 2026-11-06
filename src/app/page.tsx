@@ -2,7 +2,9 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { useSession } from "next-auth/react";
 import { ArrowRight, Heart, MessageCircleHeart, ScanBarcode, Search, Sparkles, Eye } from "lucide-react";
+import { Avatar } from "@/components/AccountCard";
 import { ProductImage } from "@/components/ProductCard";
 import { CleanserIcon, CompactIcon, ConcealerIcon, CreamJarIcon, FoundationIcon, LipstickIcon, MascaraIcon, SunscreenIcon } from "@/components/icons";
 import { Logo, SectionTitle } from "@/components/ui";
@@ -23,6 +25,7 @@ const CATEGORIES = [
 export default function Home() {
   const [profile, , ready] = useProfile();
   const { favs } = useFavorites();
+  const { data: session, status } = useSession();
   const [q, setQ] = useState("");
   const router = useRouter();
 
@@ -35,7 +38,18 @@ export default function Home() {
         <div className="pointer-events-none absolute -right-16 -top-20 h-56 w-56 rounded-full bg-caramel/25" />
         <div className="pointer-events-none absolute -bottom-24 -left-10 h-48 w-48 rounded-full bg-gold/10" />
         <div className="relative">
-          <Logo light />
+          <div className="flex items-center justify-between gap-3">
+            <Logo light />
+            {status === "authenticated" ? (
+              <Link href="/profil" aria-label="Mon compte">
+                <Avatar src={session.user?.image} name={session.user?.name} size={38} />
+              </Link>
+            ) : status === "unauthenticated" ? (
+              <Link href="/connexion?callbackUrl=%2F" className="rounded-full bg-cream/15 px-4 py-2 text-sm font-semibold text-cream ring-1 ring-cream/30 transition hover:bg-cream hover:text-brand">
+                Se connecter
+              </Link>
+            ) : null}
+          </div>
           <h1 className="mt-6 font-display text-[2.1rem] leading-[1.1]">
             {profile?.name ? `Bonjour ${profile.name},` : "Bonjour,"}
             <br />
