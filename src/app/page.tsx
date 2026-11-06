@@ -7,39 +7,26 @@ import {
   ArrowRight,
   ChevronLeft,
   ChevronRight,
-  Eye,
   MessageCircleHeart,
   ScanBarcode,
-  Search,
   Sparkles,
   UserRoundCheck,
 } from "lucide-react";
 import { Avatar } from "@/components/AccountCard";
 import { LegalLinks } from "@/components/LegalLinks";
 import { ProductImage } from "@/components/ProductCard";
-import { CleanserIcon, CompactIcon, ConcealerIcon, CreamJarIcon, FoundationIcon, LipstickIcon, MascaraIcon, SunscreenIcon } from "@/components/icons";
+import { CategoryGrid } from "@/components/CategoryGrid";
+import { SearchBar } from "@/components/SearchBar";
 import { Logo, SectionTitle } from "@/components/ui";
 import { type Favorite, useFavorites, useOnboarded, useProfile } from "@/lib/useLocal";
+import { searchHref } from "@/lib/utils";
 
-const CATEGORIES = [
-  { q: "fond de teint", label: "Teint", Icon: FoundationIcon },
-  { q: "mascara", label: "Mascara", Icon: MascaraIcon },
-  { q: "rouge à lèvres", label: "Lèvres", Icon: LipstickIcon },
-  { q: "correcteur anticernes", label: "Anticernes", Icon: ConcealerIcon },
-  { q: "fard à paupières", label: "Yeux", Icon: Eye },
-  { q: "poudre", label: "Poudre", Icon: CompactIcon },
-  { q: "crème hydratante visage", label: "Soin visage", Icon: CreamJarIcon },
-  { q: "crème solaire visage", label: "Solaire", Icon: SunscreenIcon },
-  { q: "démaquillant", label: "Démaquillant", Icon: CleanserIcon },
-];
 
 const STEPS = [
   { title: "Décrivez votre peau", text: "Type de peau, teint, préoccupations, allergies et budget : deux minutes, une seule fois." },
   { title: "Cherchez ou scannez", text: "Tapez un produit ou une marque, ou scannez le code-barres en magasin." },
   { title: "Lisez votre score", text: "Une note sur 100 expliquée simplement, une alerte en cas d'allergène et les prix comparés." },
 ];
-
-const searchHref = (query: string) => `/recherche?q=${encodeURIComponent(query)}`;
 
 export default function Home() {
   const [profile, , ready] = useProfile();
@@ -90,31 +77,12 @@ export default function Home() {
               allergies et trouve le meilleur prix.
             </p>
 
-            <form
-              role="search"
-              onSubmit={(e) => {
-                e.preventDefault();
-                const query = q.trim();
-                if (query.length >= 2) router.push(searchHref(query));
-              }}
-              className="group mt-7 flex items-center gap-2 rounded-full bg-white p-1.5 pl-5 shadow-lift ring-1 ring-line transition-shadow [animation-delay:120ms] focus-within:ring-2 focus-within:ring-brand motion-safe:animate-rise"
-            >
-              <Search size={20} className="shrink-0 text-ink/60" aria-hidden="true" />
-              <input
-                type="search"
-                enterKeyHint="search"
-                autoComplete="off"
-                className="min-w-0 flex-1 bg-transparent py-2.5 text-base text-ink outline-none placeholder:text-ink/55 [&::-webkit-search-cancel-button]:hidden"
-                value={q}
-                onChange={(e) => setQ(e.target.value)}
-                placeholder="Produit, marque, besoin…"
-                aria-label="Rechercher un produit"
-              />
-              <button type="submit" className="btn-primary min-h-12 px-4 sm:px-6" aria-label="Rechercher">
-                <ArrowRight size={20} aria-hidden="true" className="sm:hidden" />
-                <span className="hidden sm:inline">Rechercher</span>
-              </button>
-            </form>
+            <SearchBar
+              value={q}
+              onChange={setQ}
+              onSearch={(query) => router.push(searchHref(query))}
+              className="mt-7 [animation-delay:120ms] motion-safe:animate-rise"
+            />
 
             <ProfileSlot ready={ready} hasProfile={!!profile} />
           </div>
@@ -171,28 +139,7 @@ export default function Home() {
             Chaque résultat est noté pour votre peau, du meilleur au moins adapté.
           </p>
         </div>
-        <ul className="grid min-w-0 grid-cols-3 gap-2.5 sm:gap-3 lg:col-span-8">
-          {CATEGORIES.map(({ q: query, label, Icon }) => (
-            <li key={query}>
-              <Link
-                href={searchHref(query)}
-                className="group flex h-full min-h-[6.5rem] flex-col items-center justify-center gap-2.5 rounded-tile bg-paper/70 px-2 py-4 text-center ring-1 ring-line transition duration-200 hover:bg-white hover:shadow-soft hover:ring-caramel/50 active:scale-[0.98] motion-reduce:transition-none motion-reduce:active:scale-100 sm:flex-row sm:justify-start sm:gap-3.5 sm:px-4 sm:text-left lg:flex-col lg:justify-center lg:gap-2.5 lg:px-2 lg:text-center xl:flex-row xl:justify-start xl:gap-3.5 xl:px-4 xl:text-left"
-              >
-                <span className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-brand-soft text-brand transition-colors group-hover:bg-gold/70">
-                  <Icon size={23} aria-hidden="true" />
-                </span>
-                <span className="min-w-0 hyphens-auto break-words text-[0.9rem] font-semibold leading-tight text-ink sm:flex-1 sm:hyphens-manual sm:text-base lg:flex-none xl:flex-1">
-                  {label}
-                </span>
-                <ChevronRight
-                  size={18}
-                  aria-hidden="true"
-                  className="hidden shrink-0 text-ink/40 transition-transform group-hover:translate-x-0.5 group-hover:text-brand sm:block lg:hidden xl:block"
-                />
-              </Link>
-            </li>
-          ))}
-        </ul>
+        <CategoryGrid className="lg:col-span-8" stackAtLg />
       </section>
 
       {/* ---------- Favourites ---------- */}

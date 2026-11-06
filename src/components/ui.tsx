@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, CircleAlert, Info, LoaderCircle, TriangleAlert } from "lucide-react";
+import { ArrowLeft, Ban, CircleAlert, Info, LoaderCircle, Sparkles, TriangleAlert } from "lucide-react";
 import type { Verdict } from "@/lib/types";
 
 /* ---------- Brand ---------------------------------------------------- */
@@ -171,7 +171,9 @@ export function ScoreRing({ score, verdict, size = 60 }: { score: number; verdic
 export function VerdictPill({ verdict }: { verdict: Verdict }) {
   const v = VERDICT[verdict];
   return (
-    <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-bold" style={{ color: v.color, background: v.soft }}>
+    <span className="inline-flex max-w-full items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-bold leading-tight" style={{ color: v.color, background: v.soft }}>
+      {verdict === "eviter" && <Ban size={12} strokeWidth={2.75} aria-hidden="true" />}
+      {verdict === "excellent" && <Sparkles size={12} strokeWidth={2.5} aria-hidden="true" />}
       {v.label}
     </span>
   );

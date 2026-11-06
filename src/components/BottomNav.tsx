@@ -14,7 +14,8 @@ const ITEMS = [
 /**
  * Floating dock, on every screen size. It sits above the iPhone home indicator
  * (safe-area-inset-bottom); <main> keeps pb-32 so it never covers content.
- * Hidden on /bienvenue, which pins its own action bar instead.
+ * Hidden on /bienvenue, which pins its own action bar instead, and while the scanner's camera runs
+ * (<html data-camera="on">, see globals.css), so "Arrêter" owns the bottom of the screen.
  */
 export default function BottomNav() {
   const path = usePathname();
@@ -22,7 +23,7 @@ export default function BottomNav() {
   if (path.startsWith("/bienvenue")) return null;
   return (
     <nav
-      className="pointer-events-none fixed inset-x-0 bottom-0 z-30 px-3 pb-[max(env(safe-area-inset-bottom),0.75rem)] print:hidden"
+      className="bottom-nav pointer-events-none fixed inset-x-0 bottom-0 z-30 px-3 pb-[max(env(safe-area-inset-bottom),0.75rem)] print:hidden"
       aria-label="Navigation principale"
     >
       <ul className="pointer-events-auto mx-auto flex max-w-md items-stretch justify-between gap-0.5 rounded-full bg-white/92 p-1.5 shadow-float ring-1 ring-line backdrop-blur-md supports-[not(backdrop-filter:blur(1px))]:bg-white">
