@@ -1,36 +1,50 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Belle — conseillère beauté
 
-## Getting Started
+A mobile-first web app (in French) that helps someone in France pick makeup and skincare that suits **their** skin, at the best price.
 
-First, run the development server:
+## Features
+
+| Screen | What it does | Data |
+|---|---|---|
+| **Profil** | Skin tone, undertone, skin type, concerns, allergies, ingredients to avoid, budget. Optional selfie → AI shade analysis. | Stored in the browser (localStorage) |
+| **Chercher** | Search any product; results ranked 0–100 for her profile with plain-language reasons. | Open Beauty Facts |
+| **Fiche produit** | Score breakdown, allergy warning, shade tip, prices reported in shops, **live online price comparison**, alternatives from other brands, full ingredient list. | Open Beauty Facts, Open Prices, Claude + web search |
+| **Scanner** | Scan a barcode in a shop → instant verdict. | Camera (zxing) |
+| **Conseils** | Chat with "Belle", who knows her profile, searches real products and checks current prices. | Claude |
+
+## Run it locally
+
+Requirements: Node.js 20+.
 
 ```bash
+npm install
+cp .env.example .env.local    # then paste your Anthropic API key inside
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open http://localhost:3000.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+Without an API key, search / scores / scanner / shop prices still work; the selfie analysis, live prices and chat show a "clé API manquante" message.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Use it on a phone
 
-## Learn More
+The camera (scanner, selfie) only works over HTTPS. The easiest path is to deploy for free on Vercel:
 
-To learn more about Next.js, take a look at the following resources:
+1. Push this folder to a GitHub repository.
+2. On https://vercel.com → *Add New Project* → import the repo.
+3. In *Environment Variables*, add `ANTHROPIC_API_KEY`.
+4. Deploy, open the URL on the phone, and use "Ajouter à l'écran d'accueil".
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## How the score works
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+`src/lib/scoring.ts` starts at 62 and adds or removes points from the INCI ingredient list:
+allergies (hard stop, score ≤ 15), fragrance and the 26 EU fragrance allergens (for sensitive skin),
+ingredients she wants to avoid, pore-clogging ingredients (oily/acne skin), hydrating actives (dry skin),
+soothing actives (sensitive), actives for each concern, vegan/organic labels, popularity and price vs budget.
+Products without an ingredient list are marked "Infos insuffisantes".
 
-## Deploy on Vercel
+## Next steps
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- Price alerts (needs a database + scheduled job).
+- Retailer affiliate feeds (e.g. Awin) for complete, always-fresh prices and commission revenue.
+- User accounts so the profile syncs across devices.

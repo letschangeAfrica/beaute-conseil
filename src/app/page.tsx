@@ -1,103 +1,133 @@
-import Image from "next/image";
+"use client";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useState } from "react";
+import { ArrowRight, Heart, MessageCircleHeart, ScanBarcode, Search, Sparkles, Eye } from "lucide-react";
+import { ProductImage } from "@/components/ProductCard";
+import { CleanserIcon, CompactIcon, ConcealerIcon, CreamJarIcon, FoundationIcon, LipstickIcon, MascaraIcon, SunscreenIcon } from "@/components/icons";
+import { Logo, SectionTitle } from "@/components/ui";
+import { useFavorites, useProfile } from "@/lib/useLocal";
+
+const CATEGORIES = [
+  { q: "fond de teint", label: "Teint", Icon: FoundationIcon },
+  { q: "mascara", label: "Mascara", Icon: MascaraIcon },
+  { q: "rouge à lèvres", label: "Lèvres", Icon: LipstickIcon },
+  { q: "correcteur anticernes", label: "Anticernes", Icon: ConcealerIcon },
+  { q: "fard à paupières", label: "Yeux", Icon: Eye },
+  { q: "poudre", label: "Poudre", Icon: CompactIcon },
+  { q: "crème hydratante visage", label: "Soin visage", Icon: CreamJarIcon },
+  { q: "crème solaire visage", label: "Solaire", Icon: SunscreenIcon },
+  { q: "démaquillant", label: "Démaquillant", Icon: CleanserIcon },
+];
 
 export default function Home() {
-  return (
-    <div className="font-sans grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="font-mono list-inside list-decimal text-sm/6 text-center sm:text-left">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] font-mono font-semibold px-1 py-0.5 rounded">
-              src/app/page.tsx
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
+  const [profile, , ready] = useProfile();
+  const { favs } = useFavorites();
+  const [q, setQ] = useState("");
+  const router = useRouter();
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+  const go = (query: string) => router.push(`/recherche?q=${encodeURIComponent(query)}`);
+
+  return (
+    <div className="space-y-8">
+      {/* Hero */}
+      <section className="relative -mx-4 -mt-6 overflow-hidden rounded-b-[2rem] bg-brand px-5 pb-7 pt-6 text-cream sm:-mx-6 sm:px-7">
+        <div className="pointer-events-none absolute -right-16 -top-20 h-56 w-56 rounded-full bg-caramel/25" />
+        <div className="pointer-events-none absolute -bottom-24 -left-10 h-48 w-48 rounded-full bg-gold/10" />
+        <div className="relative">
+          <Logo light />
+          <h1 className="mt-6 font-display text-[2.1rem] leading-[1.1]">
+            {profile?.name ? `Bonjour ${profile.name},` : "Bonjour,"}
+            <br />
+            <span className="italic text-gold">que cherchez-vous ?</span>
+          </h1>
+          <p className="mt-2 max-w-sm text-cream/80">Le bon produit pour votre peau, au meilleur prix en France.</p>
+
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (q.trim().length >= 2) go(q.trim());
+            }}
+            className="mt-5 flex items-center gap-2 rounded-full bg-white p-1.5 pl-5 shadow-lift"
+            role="search"
           >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
+            <Search size={20} className="shrink-0 text-ink/40" />
+            <input
+              className="min-w-0 flex-1 bg-transparent py-2 text-ink outline-none placeholder:text-ink/40"
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              placeholder="Produit, marque, besoin…"
+              aria-label="Rechercher un produit"
             />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
+            <button className="btn-icon" aria-label="Rechercher">
+              <ArrowRight size={20} />
+            </button>
+          </form>
         </div>
-      </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
+      </section>
+
+      {ready && !profile && (
+        <Link href="/profil" className="card-interactive flex items-center gap-4 p-4">
+          <span className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-gold text-brand">
+            <Sparkles size={22} />
+          </span>
+          <span className="flex-1">
+            <span className="block font-bold">Créez votre profil beauté</span>
+            <span className="block text-sm text-ink/65">2 minutes pour des recommandations faites pour vous.</span>
+          </span>
+          <ArrowRight size={20} className="text-brand" />
+        </Link>
+      )}
+
+      <section>
+        <SectionTitle>Parcourir</SectionTitle>
+        <div className="grid grid-cols-3 gap-2.5 sm:grid-cols-5">
+          {CATEGORIES.map(({ q: query, label, Icon }) => (
+            <button key={query} onClick={() => go(query)} className="card-interactive group flex flex-col items-center gap-2 px-2 py-4">
+              <span className="grid h-12 w-12 place-items-center rounded-full bg-paper text-brand ring-1 ring-caramel/30 transition group-hover:bg-gold">
+                <Icon size={24} />
+              </span>
+              <span className="text-sm font-semibold">{label}</span>
+            </button>
+          ))}
+        </div>
+      </section>
+
+      <section className="grid gap-3 sm:grid-cols-2">
+        <Link href="/scanner" className="card-interactive flex items-start gap-4 p-4">
+          <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-brand text-cream">
+            <ScanBarcode size={24} />
+          </span>
+          <span>
+            <span className="block font-bold">En magasin</span>
+            <span className="block text-sm text-ink/65">Scannez un code-barres : adapté à vous ou non, et moins cher ailleurs ?</span>
+          </span>
+        </Link>
+        <Link href="/conseillere" className="card-interactive flex items-start gap-4 p-4">
+          <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-caramel text-white">
+            <MessageCircleHeart size={24} />
+          </span>
+          <span>
+            <span className="block font-bold">Demandez à Belle</span>
+            <span className="block text-sm text-ink/65">Votre conseillère répond avec vos mots, selon votre profil.</span>
+          </span>
+        </Link>
+      </section>
+
+      {favs.length > 0 && (
+        <section>
+          <SectionTitle icon={Heart}>Mes favoris</SectionTitle>
+          <div className="-mx-4 flex snap-x gap-3 overflow-x-auto px-4 pb-2 sm:-mx-6 sm:px-6">
+            {favs.map((f) => (
+              <Link key={f.code} href={`/produit/${f.code}`} className="card-interactive w-36 shrink-0 snap-start p-3">
+                <ProductImage src={f.image} alt={f.name} size={110} />
+                <p className="mt-2 truncate text-[0.7rem] font-bold uppercase tracking-[0.12em] text-caramel">{f.brand}</p>
+                <p className="line-clamp-2 text-sm font-semibold leading-snug">{f.name}</p>
+              </Link>
+            ))}
+          </div>
+        </section>
+      )}
     </div>
   );
 }

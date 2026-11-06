@@ -1,26 +1,89 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+@theme {
+  /* Brand palette */
+  --color-brand: #973131;
+  --color-brand-deep: #772424;
+  --color-caramel: #e0a75e;
+  --color-gold: #f9d689;
+  --color-cream: #f5e7b2;
+  --color-paper: #fdf8ea; /* lighter cream for surfaces that sit on cream */
+  --color-ink: #3a1d14;
+
+  /* Semantic colours for scores, tuned to sit with the warm palette */
+  --color-good: #2f6b4a;
+  --color-good-soft: #e3eedf;
+  --color-fair: #6b7a2a;
+  --color-fair-soft: #eef0d6;
+  --color-warn: #b2701c;
+  --color-warn-soft: #fbecd0;
+  --color-danger: #b42318;
+  --color-danger-soft: #fbe3dc;
+  --color-muted: #8b7b6b;
+  --color-muted-soft: #efe6d4;
+
+  --font-sans: var(--font-body), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-heading), Georgia, serif;
+
+  --shadow-soft: 0 1px 2px rgb(58 29 20 / 0.04), 0 4px 16px -4px rgb(58 29 20 / 0.08);
+  --shadow-lift: 0 2px 4px rgb(58 29 20 / 0.05), 0 12px 28px -8px rgb(58 29 20 / 0.16);
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+html {
+  font-size: 17px;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--color-cream);
+  color: var(--color-ink);
+  -webkit-tap-highlight-color: transparent;
+  text-rendering: optimizeLegibility;
+}
+
+::selection {
+  background: var(--color-gold);
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-brand);
+  outline-offset: 2px;
+}
+
+@utility card {
+  @apply rounded-2xl bg-white shadow-soft ring-1 ring-caramel/25;
+}
+
+@utility card-interactive {
+  @apply card transition duration-200 hover:-translate-y-px hover:shadow-lift hover:ring-caramel/50;
+}
+
+@utility btn {
+  @apply inline-flex min-h-12 items-center justify-center gap-2 rounded-full px-6 font-semibold transition duration-150 active:scale-[0.98] disabled:pointer-events-none disabled:opacity-55;
+}
+@utility btn-primary {
+  @apply btn bg-brand text-white shadow-soft hover:bg-brand-deep;
+}
+@utility btn-secondary {
+  @apply btn bg-white text-brand ring-1 ring-brand/30 hover:bg-paper hover:ring-brand/60;
+}
+@utility btn-icon {
+  @apply inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-brand text-white transition hover:bg-brand-deep active:scale-95 disabled:opacity-55;
+}
+
+@utility chip {
+  @apply inline-flex min-h-10 items-center gap-1.5 rounded-full border px-4 text-sm font-semibold transition;
+}
+@utility chip-on {
+  @apply chip border-brand bg-brand text-white;
+}
+@utility chip-off {
+  @apply chip border-caramel/60 bg-white text-ink hover:border-brand hover:text-brand;
+}
+
+@utility input {
+  @apply min-h-12 w-full rounded-full border border-caramel/60 bg-white px-5 text-ink outline-none transition placeholder:text-ink/40 focus:border-brand focus:ring-4 focus:ring-gold/60;
+}
+
+@utility option {
+  @apply w-full rounded-2xl border-2 bg-white px-4 py-3 text-left transition;
 }
