@@ -232,3 +232,8 @@ body {
 html[data-camera="on"] .bottom-nav {
   display: none;
 }
+
+/* Product page: while the sticky summary bar is shown, keep focused or scrolled-to elements clear of it. */
+html:has([data-sticky-summary="on"]) {
+  scroll-padding-top: 5.5rem;
+}

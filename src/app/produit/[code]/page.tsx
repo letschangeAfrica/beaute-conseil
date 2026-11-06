@@ -1,31 +1,21 @@
 "use client";
-import { use, useEffect, useState } from "react";
+import { use, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import {
-  ChevronDown,
-  CircleCheck,
-  CircleX,
-  ExternalLink,
-  FlaskConical,
-  Globe,
-  Heart,
-  Info,
-  Palette,
-  Repeat,
-  ScanText,
-  ShieldAlert,
-  Store,
-  Tag,
-} from "lucide-react";
+import { useRouter } from "next/navigation";
+import { ArrowLeft, CircleAlert, ExternalLink, Keyboard, RotateCcw, ScanText } from "lucide-react";
 import { IngredientPhoto, type LabelReading } from "@/components/IngredientPhoto";
-import ProductCard, { ProductImage } from "@/components/ProductCard";
-import { ShadeFinder } from "@/components/ShadeFinder";
-import { Notice, PageHeader, ScoreRing, SectionTitle, Skeleton, Spinner, VERDICT } from "@/components/ui";
-import { googleShoppingUrl, STORES } from "@/lib/stores";
+import ProductCard from "@/components/ProductCard";
+import { IngredientList } from "@/components/product/IngredientList";
+import { PriceSection } from "@/components/product/PriceSection";
+import { AllergyAlert, ProductHero, StickySummary } from "@/components/product/ProductHero";
+import { ReasonList } from "@/components/product/ReasonList";
+import { ShadeSection } from "@/components/product/ShadeSection";
+import { formatBarcode } from "@/components/ScannerParts";
+import { Notice, Skeleton } from "@/components/ui";
 import { isComplexionProduct, scoreProduct, shadeAdvice } from "@/lib/scoring";
 import { type LocalIngredients, readIngredients, saveIngredients, useFavorites, useProfile } from "@/lib/useLocal";
 import type { PricePoint, Product, Profile, ScoredProduct } from "@/lib/types";
-import { asBarcode, errorMessage, jsonPost, postJson, responseError } from "@/lib/utils";
+import { asBarcode, errorMessage, jsonPost, responseError, topReason } from "@/lib/utils";
 
 interface Detail {
   product: ScoredProduct;
@@ -53,79 +43,27 @@ function fromPhoto(code: string, local: LocalIngredients, profile: Profile | nul
   return { product: scoreProduct(product, profile), prices: [], alternatives: [] };
 }
 
-const fmt = (n: number) => n.toLocaleString("fr-FR", { style: "currency", currency: "EUR" });
-
-/** "Prix vérifiés à l'instant" / "il y a 2 h" (results can come from a cache up to 6 h old). */
-function checkedLabel(iso: string): string {
-  const min = Math.round((Date.now() - new Date(iso).getTime()) / 60_000);
-  if (!(min >= 1)) return "Prix vérifiés à l'instant";
-  return min < 60 ? `Prix vérifiés il y a ${min} min` : `Prix vérifiés il y a ${Math.round(min / 60)} h`;
-}
-
-function PriceRow({ p, best }: { p: PricePoint; best?: boolean }) {
-  const inner = (
-    <>
-      <span className={`grid h-10 w-10 shrink-0 place-items-center rounded-full ${p.source === "web" ? "bg-gold/60 text-brand" : "bg-paper text-caramel ring-1 ring-caramel/30"}`}>
-        {p.source === "web" ? <Globe size={18} /> : <Store size={18} />}
-      </span>
-      <div className="min-w-0 flex-1">
-        <p className="truncate font-semibold">{p.store}</p>
-        <p className="text-xs text-ink/55">
-          {p.source === "web" ? "En ligne · vérifié à l'instant" : `En magasin${p.city ? ` · ${p.city}` : ""} · ${new Date(p.date).toLocaleDateString("fr-FR")}`}
-        </p>
-      </div>
-      <div className="text-right">
-        <p className="text-lg font-bold tabular-nums">{fmt(p.price)}</p>
-        {best && <p className="text-[0.7rem] font-bold uppercase tracking-wider text-good">Meilleur prix</p>}
-      </div>
-      {p.url && <ExternalLink size={16} className="shrink-0 text-ink/35" />}
-    </>
-  );
-  const cls = "flex items-center gap-3 py-3";
-  return p.url ? (
-    <a href={p.url} target="_blank" rel="noopener noreferrer" className={`${cls} rounded-xl transition hover:bg-paper`}>
-      {inner}
-    </a>
-  ) : (
-    <div className={cls}>{inner}</div>
-  );
-}
-
-function DetailSkeleton() {
-  return (
-    <div className="space-y-4" aria-busy="true">
-      <div className="card flex gap-4 p-4">
-        <Skeleton className="h-28 w-28" />
-        <div className="flex-1 space-y-2 pt-2">
-          <Skeleton className="h-3 w-1/3" />
-          <Skeleton className="h-6 w-4/5" />
-          <Skeleton className="h-3 w-1/4" />
-        </div>
-      </div>
-      <Skeleton className="h-48 w-full rounded-2xl" />
-      <Skeleton className="h-40 w-full rounded-2xl" />
-    </div>
-  );
-}
-
 export default function ProduitPage({ params }: { params: Promise<{ code: string }> }) {
   const { code } = use(params);
   const [profile, , ready] = useProfile();
   const { isFav, toggle } = useFavorites();
   const [data, setData] = useState<Detail | null>(null);
   const [error, setError] = useState("");
-  const [live, setLive] = useState<{ state: "idle" | "loading" | "done" | "error"; offers: PricePoint[]; summary?: string; checkedAt?: string; error?: string }>({
-    state: "idle",
-    offers: [],
-  });
+  const [attempt, setAttempt] = useState(0);
 
   const [photo, setPhoto] = useState<LocalIngredients | null>(null);
   const [unknown, setUnknown] = useState(false);
+  const [announce, setAnnounce] = useState("");
+
+  // Sticky summary (phones): shown once the hero has scrolled out of view.
+  const heroRef = useRef<HTMLDivElement>(null);
+  const [heroGone, setHeroGone] = useState(false);
 
   useEffect(() => {
     if (!ready) return;
     const local = readIngredients(code);
     setPhoto(local);
+    setError("");
     fetch(`/api/product/${code}`, jsonPost({ profile }))
       .then(async (r) => {
         if (r.status === 404 && asBarcode(code)) {
@@ -139,7 +77,15 @@ export default function ProduitPage({ params }: { params: Promise<{ code: string
         setData(withPhotoIngredients(await r.json(), local, profile));
       })
       .catch((e) => setError(errorMessage(e)));
-  }, [code, ready, profile]);
+  }, [code, ready, profile, attempt]);
+
+  useEffect(() => {
+    const el = heroRef.current;
+    if (!el) return;
+    const io = new IntersectionObserver(([e]) => setHeroGone(!e.isIntersecting && e.boundingClientRect.top < 0), { threshold: 0 });
+    io.observe(el);
+    return () => io.disconnect();
+  }, [data]);
 
   function onLabelRead(r: LabelReading) {
     const local: LocalIngredients = { text: r.ingredientsText, name: r.productName || undefined, brand: r.brand || undefined, at: new Date().toISOString() };
@@ -147,290 +93,227 @@ export default function ProduitPage({ params }: { params: Promise<{ code: string
     setPhoto(local);
     setUnknown(false);
     setData((prev) => (prev ? withPhotoIngredients(prev, local, profile, true) : fromPhoto(code, local, profile)));
+    setAnnounce("Liste d'ingrédients lue. Votre score a été mis à jour.");
   }
 
-  async function checkLivePrices() {
-    if (!data) return;
-    setLive({ state: "loading", offers: [] });
-    try {
-      const json = await postJson<{ offers: PricePoint[]; summary: string; checkedAt: string }>("/api/live-prices", {
-        name: data.product.name,
-        brand: data.product.brand,
-        code,
-        quantity: data.product.quantity,
-        city: profile?.city,
-      });
-      setLive({ state: "done", offers: json.offers, summary: json.summary, checkedAt: json.checkedAt });
-    } catch (e) {
-      setLive({ state: "error", offers: [], error: errorMessage(e) });
-    }
-  }
+  const status = (
+    <p className="sr-only" aria-live="polite">
+      {announce}
+    </p>
+  );
+
+  /* ---------- Unknown product ---------- */
 
   if (unknown && !data)
     return (
-      <div className="space-y-4">
-        <PageHeader back eyebrow={`Code-barres ${code}`} title="Produit pas encore référencé" subtitle="Ce produit n'est pas dans la base Open Beauty Facts. Photographiez sa liste d'ingrédients : Belle la lit et vous donne votre score." />
-        <section className="card space-y-3 p-5">
-          <p className="flex items-center gap-2 font-bold">
-            <ScanText size={20} className="text-brand" /> Comment faire
+      <div data-layout="wide" className="mx-auto w-full max-w-3xl">
+        {status}
+        <TopBar />
+        <header className="mt-6">
+          <p className="eyebrow">Code-barres {asBarcode(code) ? formatBarcode(code) : code}</p>
+          <h1 className="mt-2 font-display text-headline font-normal text-ink">
+            Produit pas encore <span className="italic text-brand">référencé</span>
+          </h1>
+          <p className="mt-3 max-w-xl leading-relaxed text-ink/75">
+            Ce produit n&apos;est pas dans la base Open Beauty Facts. Photographiez sa liste d&apos;ingrédients : Belle la lit et vous donne votre score.
           </p>
-          <ol className="list-decimal space-y-1 pl-5 text-[0.95rem] text-ink/75">
-            <li>Retournez le produit et trouvez « Ingredients ».</li>
-            <li>Cadrez toute la liste, bien à plat, sans reflet.</li>
+        </header>
+
+        <section aria-labelledby="howto-title" className="card mt-8 p-5 sm:p-6">
+          <h2 id="howto-title" className="flex items-center gap-2.5 font-display text-[1.3rem] leading-tight text-ink">
+            <ScanText size={21} aria-hidden="true" className="text-brand" /> Comment faire
+          </h2>
+          <ol className="mt-4 space-y-3">
+            {["Retournez le produit et trouvez « Ingredients ».", "Cadrez toute la liste, bien à plat, sans reflet."].map((t, i) => (
+              <li key={t} className="flex gap-3.5">
+                <span aria-hidden="true" className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-brand-soft font-display text-lg italic text-brand">
+                  {i + 1}
+                </span>
+                <span className="pt-1 leading-snug text-ink/80">{t}</span>
+              </li>
+            ))}
           </ol>
-          <IngredientPhoto onRead={onLabelRead} />
+          <div className="mt-5">
+            <IngredientPhoto onRead={onLabelRead} />
+          </div>
         </section>
-        <p className="text-center text-sm text-ink/60">
-          <Link href="/scanner" className="font-semibold text-brand underline">
-            Saisir un autre code
+
+        <div className="mt-6 flex flex-col gap-2.5 sm:flex-row">
+          <Link href="/scanner" className="btn-secondary">
+            <Keyboard size={18} aria-hidden="true" /> Saisir un autre code
           </Link>
-          {" · "}
-          <a href="https://world.openbeautyfacts.org/contribute" target="_blank" rel="noopener noreferrer" className="font-semibold text-brand underline">
-            Ajouter le produit à Open Beauty Facts
+          <a href="https://world.openbeautyfacts.org/contribute" target="_blank" rel="noopener noreferrer" className="btn text-brand hover:bg-paper">
+            Ajouter le produit à Open Beauty Facts <ExternalLink size={15} aria-hidden="true" />
           </a>
-        </p>
+        </div>
       </div>
     );
+
+  /* ---------- Error ---------- */
 
   if (error)
     return (
-      <div>
-        <PageHeader title="Produit" back />
-        <Notice kind="error">
-          {error}{" "}
-          <Link href="/scanner" className="font-bold underline">
-            Saisir un autre code
-          </Link>
-        </Notice>
+      <div data-layout="wide" className="mx-auto w-full max-w-3xl">
+        <TopBar />
+        <div className="mt-8 flex flex-col items-center gap-4 rounded-panel bg-paper px-6 py-12 text-center ring-1 ring-line">
+          <span aria-hidden="true" className="grid h-14 w-14 place-items-center rounded-full bg-danger-soft text-danger">
+            <CircleAlert size={26} />
+          </span>
+          <h1 className="font-display text-[1.6rem] leading-tight text-ink">Impossible d&apos;afficher ce produit</h1>
+          <div className="w-full max-w-md text-left">
+            <Notice kind="error">{error}</Notice>
+          </div>
+          <div className="flex flex-col gap-2.5 sm:flex-row">
+            <button type="button" className="btn-primary" onClick={() => setAttempt((n) => n + 1)}>
+              <RotateCcw size={18} aria-hidden="true" /> Réessayer
+            </button>
+            <Link href="/scanner" className="btn-secondary">
+              <Keyboard size={18} aria-hidden="true" /> Saisir un autre code
+            </Link>
+          </div>
+        </div>
       </div>
     );
+
   if (!data) return <DetailSkeleton />;
 
+  /* ---------- Product ---------- */
+
   const { product: p, prices, alternatives } = data;
-  const searchQ = `${p.brand} ${p.name}`.trim();
   const advice = isComplexionProduct(p) ? shadeAdvice(profile) : null;
   const fav = isFav(p.code);
-  const v = VERDICT[p.verdict];
-  const allPrices = [...live.offers, ...prices].sort((a, b) => a.price - b.price);
-  const pros = p.reasons.filter((r) => r.kind === "plus");
-  const cons = p.reasons.filter((r) => r.kind === "minus");
-  const infos = p.reasons.filter((r) => r.kind === "info");
+  const toggleFav = () => toggle({ code: p.code, name: p.name, brand: p.brand, image: p.image, score: p.score });
+  const hits = p.allergyHit?.length ? p.allergyHit : null;
 
   return (
-    <div className="space-y-4">
-      <PageHeader title="" back />
+    <div data-layout="wide" className="flex flex-col gap-6">
+      {status}
+      <StickySummary p={p} visible={heroGone} fav={fav} onToggleFav={toggleFav} />
+      <TopBar />
 
-      {/* Identity */}
-      <section className="card -mt-4 overflow-hidden">
-        <div className="flex gap-4 p-4">
-          <ProductImage src={p.image} alt={p.name} size={116} />
-          <div className="min-w-0 flex-1 py-1">
-            {p.brand && <p className="text-xs font-bold uppercase tracking-[0.14em] text-caramel-ink">{p.brand}</p>}
-            <h1 className="mt-0.5 font-display text-2xl leading-tight">{p.name}</h1>
-            {p.quantity && <p className="mt-1 text-sm text-ink/55">{p.quantity}</p>}
-          </div>
-        </div>
-        <button
-          onClick={() => toggle({ code: p.code, name: p.name, brand: p.brand, image: p.image, score: p.score })}
-          className={`flex w-full items-center justify-center gap-2 border-t border-caramel/20 py-3 text-sm font-semibold transition ${fav ? "bg-gold/40 text-brand" : "text-ink/70 hover:bg-paper hover:text-brand"}`}
-          aria-pressed={fav}
-        >
-          <Heart size={18} fill={fav ? "currentColor" : "none"} />
-          {fav ? "Dans mes favoris" : "Ajouter à mes favoris"}
-        </button>
-      </section>
-
-      {/* Verdict */}
-      <section className="card p-5">
-        <div className="flex items-center gap-4">
-          <ScoreRing score={p.score} verdict={p.verdict} size={92} />
-          <div>
-            <p className="text-xs font-bold uppercase tracking-[0.14em] text-ink/50">{profile ? "Pour vous" : "Évaluation générale"}</p>
-            <p className="font-display text-2xl" style={{ color: v.color }}>
-              {v.label}
-            </p>
-            {!profile && (
-              <Link href="/profil" className="text-sm font-semibold text-brand underline underline-offset-2">
-                Personnaliser avec mon profil
-              </Link>
-            )}
+      <div className="grid gap-6 lg:grid-cols-12 lg:items-start lg:gap-10">
+        {/* Left: safety and verdict. Sticky on desktop. */}
+        <div className="flex flex-col gap-4 lg:sticky lg:top-6 lg:col-span-5">
+          {hits && <AllergyAlert hits={hits} />}
+          <div ref={heroRef}>
+            <ProductHero p={p} personal={!!profile} fav={fav} onToggleFav={toggleFav} />
           </div>
         </div>
 
-        {p.allergyHit && (
-          <div className="mt-4 flex items-center gap-3 rounded-2xl bg-danger-soft p-3 font-semibold text-danger">
-            <ShieldAlert size={22} className="shrink-0" />
-            Contient un ingrédient auquel vous êtes allergique : {p.allergyHit.join(", ")}.
-          </div>
-        )}
+        {/* Right: why, shade, prices, alternatives, ingredients. */}
+        <div className="flex min-w-0 flex-col gap-6 lg:col-span-7">
+          <ReasonList reasons={p.reasons} />
 
-        <div className="mt-5 grid gap-4 sm:grid-cols-2">
-          {pros.length > 0 && (
-            <div>
-              <p className="mb-2 text-sm font-bold text-good">Points forts</p>
-              <ul className="space-y-2">
-                {pros.map((r, i) => (
-                  <li key={i} className="flex gap-2.5 text-[0.95rem] leading-snug">
-                    <CircleCheck size={18} className="mt-0.5 shrink-0 text-good" />
-                    {r.text}
+          {p.verdict === "inconnu" && !photo && (
+            <section aria-labelledby="missing-title" className="rounded-card bg-paper p-5 ring-1 ring-line sm:p-6">
+              <h2 id="missing-title" className="font-display text-[1.3rem] leading-tight text-ink">
+                Il manque la liste d&apos;ingrédients
+              </h2>
+              <p className="mt-2 leading-relaxed text-ink/75">
+                Pour vous donner un vrai score, photographiez-la au dos du produit : Belle la lit pour vous.
+              </p>
+              <div className="mt-4">
+                <IngredientPhoto onRead={onLabelRead} />
+              </div>
+            </section>
+          )}
+
+          {photo && (
+            <div className="flex gap-3 rounded-tile bg-paper p-4 text-sm leading-relaxed ring-1 ring-line">
+              <ScanText size={20} aria-hidden="true" className="mt-0.5 shrink-0 text-brand" />
+              <div>
+                <p className="text-ink/80">
+                  Ingrédients lus sur votre photo du {new Date(photo.at).toLocaleDateString("fr-FR")}. Vérifiez l&apos;étiquette en cas d&apos;allergie.
+                </p>
+                <a
+                  href={`https://world.openbeautyfacts.org/product/${p.code}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="mt-1 inline-flex min-h-11 items-center gap-1 font-semibold text-brand underline underline-offset-2"
+                >
+                  Aider les autres : compléter la fiche sur Open Beauty Facts <ExternalLink size={13} aria-hidden="true" />
+                </a>
+              </div>
+            </div>
+          )}
+
+          {advice && profile && <ShadeSection p={p} profile={profile} advice={advice} />}
+
+          <PriceSection name={p.name} brand={p.brand} code={code} quantity={p.quantity} city={profile?.city} prices={prices} />
+
+          {alternatives.length > 0 && (
+            <section aria-labelledby="alt-title">
+              <h2 id="alt-title" className="font-display text-[1.35rem] leading-tight text-ink">
+                Alternatives à comparer
+              </h2>
+              <p className="mt-1 text-sm text-ink/70">Même catégorie, bien notées pour vous, souvent d&apos;autres marques.</p>
+              <ul className="-mx-4 mt-4 flex snap-x snap-mandatory scroll-px-4 gap-3 overflow-x-auto px-4 pb-3 [scrollbar-width:thin] sm:-mx-6 sm:scroll-px-6 sm:px-6 md:mx-0 md:grid md:grid-cols-2 md:overflow-visible md:px-0 md:pb-0">
+                {alternatives.map((a) => (
+                  <li key={a.code} className="w-[85%] max-w-[22rem] shrink-0 snap-start md:w-auto md:max-w-none">
+                    <ProductCard variant="tile" p={{ ...a, topReason: topReason(a) }} />
                   </li>
                 ))}
               </ul>
-            </div>
+            </section>
           )}
-          {cons.length > 0 && (
-            <div>
-              <p className="mb-2 text-sm font-bold text-danger">Points d&apos;attention</p>
-              <ul className="space-y-2">
-                {cons.map((r, i) => (
-                  <li key={i} className="flex gap-2.5 text-[0.95rem] leading-snug">
-                    <CircleX size={18} className="mt-0.5 shrink-0 text-danger" />
-                    {r.text}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
+
+          {p.ingredientsText && <IngredientList text={p.ingredientsText} allergyHit={p.allergyHit} />}
+
+          <p className="text-center text-xs leading-relaxed text-ink/70">
+            Données produits : Open Beauty Facts · Prix en magasin : Open Prices
+            <br />
+            Code-barres {p.code}
+          </p>
         </div>
-        {infos.length > 0 && (
-          <ul className="mt-4 space-y-1.5 border-t border-caramel/20 pt-3">
-            {infos.map((r, i) => (
-              <li key={i} className="flex gap-2.5 text-sm text-ink/65">
-                <Info size={16} className="mt-0.5 shrink-0" />
-                {r.text}
-              </li>
-            ))}
-          </ul>
-        )}
+      </div>
+    </div>
+  );
+}
 
-        {p.verdict === "inconnu" && !photo && (
-          <div className="mt-4 space-y-3 rounded-2xl bg-paper p-4 ring-1 ring-caramel/30">
-            <p className="text-[0.95rem]">
-              <b>Il manque la liste d&apos;ingrédients</b> pour vous donner un vrai score. Photographiez-la au dos du produit : Belle la lit pour vous.
-            </p>
-            <IngredientPhoto onRead={onLabelRead} />
-          </div>
-        )}
+/* ---------- Pieces ---------- */
 
-        {photo && (
-          <div className="mt-4 flex gap-3 rounded-2xl bg-paper p-3.5 text-sm leading-relaxed ring-1 ring-caramel/30">
-            <ScanText size={20} className="mt-0.5 shrink-0 text-brand" />
-            <div>
-              <p>
-                Ingrédients lus sur votre photo du {new Date(photo.at).toLocaleDateString("fr-FR")}. Vérifiez l&apos;étiquette en cas d&apos;allergie.
-              </p>
-              <a
-                href={`https://world.openbeautyfacts.org/product/${p.code}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="mt-1 inline-flex items-center gap-1 font-semibold text-brand underline"
-              >
-                Aider les autres : compléter la fiche sur Open Beauty Facts <ExternalLink size={13} />
-              </a>
+function TopBar() {
+  const router = useRouter();
+  return (
+    <div className="flex h-12 items-center">
+      <button type="button" onClick={() => router.back()} className="-ml-2 inline-flex min-h-11 items-center gap-1.5 rounded-full px-2 text-sm font-semibold text-ink/75 hover:text-brand">
+        <ArrowLeft size={18} aria-hidden="true" /> Retour
+      </button>
+    </div>
+  );
+}
+
+/** Same footprint as the loaded page: hero (left on desktop), then sections. */
+function DetailSkeleton() {
+  return (
+    <div data-layout="wide" className="flex flex-col gap-6" aria-busy="true" aria-label="Chargement du produit">
+      <div className="h-12" />
+      <div className="grid gap-6 lg:grid-cols-12 lg:gap-10">
+        <div className="card overflow-hidden lg:col-span-5">
+          <div className="flex gap-4 p-4 sm:p-5 lg:flex-col lg:p-6">
+            <Skeleton className="aspect-square w-[6.5rem] shrink-0 rounded-tile sm:w-32 lg:mx-auto lg:w-full lg:max-w-[18rem]" />
+            <div className="flex-1 space-y-2 pt-2">
+              <Skeleton className="h-3 w-1/3" />
+              <Skeleton className="h-6 w-4/5" />
+              <Skeleton className="h-3 w-1/4" />
             </div>
           </div>
-        )}
-
-        {advice && profile && (
-          <div className="mt-4 space-y-3 rounded-2xl bg-gold/45 p-3.5 text-sm leading-relaxed">
-            <div className="flex gap-3">
-              <Palette size={20} className="mt-0.5 shrink-0 text-brand" />
-              <p>
-                <b>Votre teinte.</b> {advice}
-              </p>
+          <div className="flex items-center gap-4 border-t border-line p-5">
+            <Skeleton className="h-[88px] w-[88px] rounded-full" />
+            <div className="flex-1 space-y-2">
+              <Skeleton className="h-3 w-20" />
+              <Skeleton className="h-6 w-40" />
             </div>
-            <ShadeFinder name={p.name} brand={p.brand} code={p.code} profile={profile} />
           </div>
-        )}
-      </section>
-
-      {/* Prices */}
-      <section className="card p-5">
-        <SectionTitle icon={Tag}>Où l&apos;acheter au meilleur prix</SectionTitle>
-
-        {live.state === "done" && live.summary && (
-          <div className="mb-2 rounded-2xl bg-good-soft p-3 text-sm font-semibold text-good">
-            {live.summary}
-            {live.checkedAt && <span className="mt-1 block text-xs font-normal opacity-80">{checkedLabel(live.checkedAt)}</span>}
-          </div>
-        )}
-
-        {allPrices.length > 0 ? (
-          <div className="divide-y divide-caramel/20">
-            {allPrices.slice(0, 8).map((pp, i) => (
-              <PriceRow key={`${pp.store}-${i}`} p={pp} best={i === 0 && allPrices.length > 1} />
-            ))}
-          </div>
-        ) : (
-          live.state !== "loading" && (
-            <p className="text-sm text-ink/60">{live.state === "done" ? "Aucune offre trouvée en ligne pour ce produit précis." : "Aucun prix relevé en magasin pour l'instant."}</p>
-          )
-        )}
-
-        {live.state === "error" && (
-          <div className="mt-3">
-            <Notice kind="error">{live.error}</Notice>
-          </div>
-        )}
-
-        {live.state !== "done" && (
-          <button className="btn-primary mt-4 w-full" onClick={checkLivePrices} disabled={live.state === "loading"}>
-            {live.state === "loading" ? <Spinner label="Comparaison des sites en cours…" /> : (
-              <>
-                <Globe size={18} /> Comparer les prix en ligne
-              </>
-            )}
-          </button>
-        )}
-        {live.state === "loading" && <p className="mt-2 text-center text-xs text-ink/50">Environ 30 secondes : nous consultons plusieurs enseignes.</p>}
-        {live.state === "done" && <p className="mt-2 text-xs text-ink/50">Prix indicatifs relevés automatiquement. Vérifiez sur le site avant d&apos;acheter.</p>}
-
-        <div className="mt-5 border-t border-caramel/20 pt-4">
-          <p className="mb-2.5 text-sm font-semibold text-ink/70">Rechercher directement chez</p>
-          <div className="flex flex-wrap gap-2">
-            <a className="chip-off" href={googleShoppingUrl(searchQ)} target="_blank" rel="noopener noreferrer">
-              Google Shopping <ExternalLink size={14} />
-            </a>
-            {STORES.map((s) => (
-              <a key={s.domain} className="chip-off" href={s.search(searchQ)} target="_blank" rel="noopener noreferrer">
-                {s.name} <ExternalLink size={14} />
-              </a>
-            ))}
+          <div className="border-t border-line p-4">
+            <Skeleton className="h-12 w-full rounded-full" />
           </div>
         </div>
-      </section>
-
-      {/* Alternatives */}
-      {alternatives.length > 0 && (
-        <section className="pt-2">
-          <SectionTitle icon={Repeat}>Alternatives à comparer</SectionTitle>
-          <p className="-mt-1 mb-3 text-sm text-ink/60">Même catégorie, bien notées pour vous, souvent d&apos;autres marques.</p>
-          <div className="space-y-2.5">
-            {alternatives.map((a) => (
-              <ProductCard key={a.code} p={{ ...a, topReason: a.reasons.find((r) => r.kind === "plus")?.text }} />
-            ))}
-          </div>
-        </section>
-      )}
-
-      {/* Ingredients */}
-      {p.ingredientsText && (
-        <details className="card group p-5">
-          <summary className="flex cursor-pointer list-none items-center justify-between font-bold">
-            <span className="flex items-center gap-2">
-              <FlaskConical size={20} className="text-brand" /> Liste des ingrédients
-            </span>
-            <ChevronDown size={20} className="text-ink/50 transition group-open:rotate-180" />
-          </summary>
-          <p className="mt-3 text-sm leading-relaxed text-ink/75">{p.ingredientsText}</p>
-        </details>
-      )}
-
-      <p className="pt-2 text-center text-xs leading-relaxed text-ink/45">
-        Données produits : Open Beauty Facts · Prix en magasin : Open Prices
-        <br />
-        Code-barres {p.code}
-      </p>
+        <div className="flex flex-col gap-6 lg:col-span-7">
+          <Skeleton className="h-56 w-full rounded-card" />
+          <Skeleton className="h-64 w-full rounded-card" />
+        </div>
+      </div>
     </div>
   );
 }

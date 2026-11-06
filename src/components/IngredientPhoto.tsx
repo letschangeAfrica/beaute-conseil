@@ -34,12 +34,12 @@ export function IngredientPhoto({ onRead, label = "Photographier la liste d'ingr
 
   return (
     <div className="space-y-2">
-      <label className={`btn-primary w-full cursor-pointer ${state === "loading" ? "pointer-events-none opacity-70" : ""}`}>
+      <label className={`btn-primary w-full cursor-pointer has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-brand ${state === "loading" ? "pointer-events-none opacity-70" : ""}`}>
         {state === "loading" ? (
           <Spinner label="Lecture de l'étiquette…" />
         ) : (
           <>
-            <Camera size={19} /> {label}
+            <Camera size={19} aria-hidden="true" /> {label}
           </>
         )}
         <input
