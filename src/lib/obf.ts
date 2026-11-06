@@ -56,13 +56,19 @@ function normalize(raw: RawProduct): Product | null {
   };
 }
 
-async function obfFetch(url: string, revalidate: number) {
+/**
+ * GET from Open Beauty Facts. Throws on outages (5xx, timeout) so routes answer 502.
+ * With `notFoundIsNull`, a 404 resolves to null: the product API answers 404 for unknown barcodes,
+ * which is "not in the database", not "database down".
+ */
+async function obfFetch(url: string, revalidate: number, { notFoundIsNull = false } = {}) {
   const res = await fetch(url, {
     headers: { "User-Agent": UA },
     next: { revalidate },
     // Fail fast instead of holding the route until the platform kills it.
     signal: AbortSignal.timeout(8_000),
   });
+  if (notFoundIsNull && res.status === 404) return null;
   if (!res.ok) throw new Error(`Open Beauty Facts ${res.status}`);
   return res.json();
 }
@@ -97,8 +103,8 @@ export async function searchProducts(query: string, pageSize = 40): Promise<Prod
 
 export async function getProduct(code: string): Promise<Product | null> {
   if (!asBarcode(code)) return null;
-  const data = await obfFetch(`${BASE}/api/v2/product/${code}.json?fields=${FIELDS}`, 3600);
-  if (data.status !== 1 || !data.product) return null;
+  const data = await obfFetch(`${BASE}/api/v2/product/${code}.json?fields=${FIELDS}`, 3600, { notFoundIsNull: true });
+  if (!data || data.status !== 1 || !data.product) return null; // unknown barcode → the route answers 404
   return normalize({ ...data.product, code });
 }
 
