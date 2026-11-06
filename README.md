@@ -26,6 +26,25 @@ Open http://localhost:3000.
 
 Without an API key, search / scores / scanner / shop prices still work; the selfie analysis, live prices and chat show a "clé API manquante" message.
 
+## Cost protection
+
+The three features that call Claude (chat, selfie analysis, live prices) are guarded by [src/lib/guard.ts](src/lib/guard.ts):
+
+- **Per-visitor limits**, counted per Google account when signed in, otherwise per IP address:
+
+  | Feature | Per hour (guest / signed in) | Per day (guest / signed in) |
+  |---|---|---|
+  | Chat | 10 / 30 | 25 / 100 |
+  | Live prices | 5 / 15 | 15 / 50 |
+  | Selfie analysis | 3 / 6 | 5 / 15 |
+
+- **Daily spend cap** (`DAILY_BUDGET_USD`, default $5). Each response's token usage is priced at Claude Opus 5.5 list rates and added to a daily counter. Once the cap is reached, these features pause until midnight UTC; search, scores and the scanner keep working.
+- **Live price cache**: results are shared by barcode for 6 hours (1 hour when no offer was found). Cache hits are free and don't count against limits.
+
+The counters live in Redis (Upstash). On Vercel: *Storage* → *Create* → *Upstash for Redis*, connected to the project, which adds `KV_REST_API_URL` and `KV_REST_API_TOKEN`. Without Redis the app falls back to in-memory counters: fine locally, but unreliable once deployed.
+
+The cap is an estimate. Also set a monthly spend limit in the [Anthropic Console](https://console.anthropic.com/settings/limits) as a hard backstop.
+
 ## Sign in with Google
 
 Optional accounts use [Auth.js](https://authjs.dev). Google is the only method, so the same button signs in and signs up. There's no database: the session is an encrypted cookie, and the beauty profile stays in the browser.

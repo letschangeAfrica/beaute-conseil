@@ -31,6 +31,13 @@ interface Detail {
 
 const fmt = (n: number) => n.toLocaleString("fr-FR", { style: "currency", currency: "EUR" });
 
+/** "Prix vérifiés à l'instant" / "il y a 2 h" (results can come from a cache up to 6 h old). */
+function checkedLabel(iso: string): string {
+  const min = Math.round((Date.now() - new Date(iso).getTime()) / 60_000);
+  if (!(min >= 1)) return "Prix vérifiés à l'instant";
+  return min < 60 ? `Prix vérifiés il y a ${min} min` : `Prix vérifiés il y a ${Math.round(min / 60)} h`;
+}
+
 function PriceRow({ p, best }: { p: PricePoint; best?: boolean }) {
   const inner = (
     <>
@@ -83,7 +90,7 @@ export default function ProduitPage({ params }: { params: Promise<{ code: string
   const { isFav, toggle } = useFavorites();
   const [data, setData] = useState<Detail | null>(null);
   const [error, setError] = useState("");
-  const [live, setLive] = useState<{ state: "idle" | "loading" | "done" | "error"; offers: PricePoint[]; summary?: string; error?: string }>({
+  const [live, setLive] = useState<{ state: "idle" | "loading" | "done" | "error"; offers: PricePoint[]; summary?: string; checkedAt?: string; error?: string }>({
     state: "idle",
     offers: [],
   });
@@ -110,7 +117,7 @@ export default function ProduitPage({ params }: { params: Promise<{ code: string
       });
       const json = await r.json();
       if (!r.ok) throw new Error(json.error);
-      setLive({ state: "done", offers: json.offers, summary: json.summary });
+      setLive({ state: "done", offers: json.offers, summary: json.summary, checkedAt: json.checkedAt });
     } catch (e) {
       setLive({ state: "error", offers: [], error: e instanceof Error ? e.message : "Une erreur est survenue." });
     }
@@ -242,7 +249,10 @@ export default function ProduitPage({ params }: { params: Promise<{ code: string
         <SectionTitle icon={Tag}>Où l&apos;acheter au meilleur prix</SectionTitle>
 
         {live.state === "done" && live.summary && (
-          <div className="mb-2 rounded-2xl bg-good-soft p-3 text-sm font-semibold text-good">{live.summary}</div>
+          <div className="mb-2 rounded-2xl bg-good-soft p-3 text-sm font-semibold text-good">
+            {live.summary}
+            {live.checkedAt && <span className="mt-1 block text-xs font-normal opacity-80">{checkedLabel(live.checkedAt)}</span>}
+          </div>
         )}
 
         {allPrices.length > 0 ? (

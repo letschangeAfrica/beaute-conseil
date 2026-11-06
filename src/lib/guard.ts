@@ -1,0 +1,114 @@
+import "server-only";
+import type Anthropic from "@anthropic-ai/sdk";
+import { auth } from "@/auth";
+import { kv } from "./kv";
+
+/**
+ * Protects the paid Claude endpoints (chat, live-prices, shade):
+ * 1. Per-visitor rate limits (signed-in users by account, everyone else by IP).
+ * 2. A global daily spend cap in USD, fed by the real token usage of each response.
+ */
+
+/* ---------- Limits (edit here) ---------------------------------------- */
+
+type Feature = "chat" | "live-prices" | "shade";
+
+/** Requests allowed per visitor. Signed-in users get the higher numbers. */
+const LIMITS: Record<Feature, { perHour: [anon: number, user: number]; perDay: [anon: number, user: number] }> = {
+  chat: { perHour: [10, 30], perDay: [25, 100] },
+  "live-prices": { perHour: [5, 15], perDay: [15, 50] }, // cache hits don't count
+  shade: { perHour: [3, 6], perDay: [5, 15] },
+};
+
+/** Total estimated Claude spend allowed per UTC day, across all visitors. Override with DAILY_BUDGET_USD. */
+function dailyBudget(): number {
+  const v = Number(process.env.DAILY_BUDGET_USD);
+  return Number.isFinite(v) && v > 0 ? v : 5;
+}
+
+/* ---------- Pricing: claude-opus-5-5 list prices, USD per million tokens */
+
+const PRICE = { input: 4, output: 20, cacheWrite: 5, cacheRead: 0.2, perWebSearch: 0.01 };
+
+/** Estimated cost of one response, from its `usage`. (A refusal fallback may bill at another model's rate.) */
+export function costOf(u: Anthropic.Beta.BetaUsage): number {
+  return (
+    (u.input_tokens * PRICE.input +
+      u.output_tokens * PRICE.output +
+      (u.cache_creation_input_tokens ?? 0) * PRICE.cacheWrite +
+      (u.cache_read_input_tokens ?? 0) * PRICE.cacheRead) /
+      1_000_000 +
+    (u.server_tool_use?.web_search_requests ?? 0) * PRICE.perWebSearch
+  );
+}
+
+/* ---------- Identity -------------------------------------------------- */
+
+async function identify(req: Request): Promise<{ id: string; signedIn: boolean }> {
+  try {
+    const session = await auth();
+    const key = session?.user?.email ?? session?.user?.id;
+    if (key) return { id: `u:${key.toLowerCase()}`, signedIn: true };
+  } catch {
+    /* auth not configured: fall back to IP */
+  }
+  // On Vercel these headers are set by the platform. When self-hosting, put a trusted proxy in front.
+  const ip = req.headers.get("x-real-ip") || req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
+  return { id: `ip:${ip}`, signedIn: false };
+}
+
+/* ---------- Public API ------------------------------------------------ */
+
+const today = () => new Date().toISOString().slice(0, 10);
+const spendKey = () => `spend:${today()}`;
+const DAY = 86_400;
+const HOUR = 3_600;
+
+const json = (error: string, status: number, headers?: HeadersInit) => Response.json({ error }, { status, headers });
+
+/**
+ * Call at the top of a paid route. Returns a Response to send back (429 / 503) when the request must be
+ * refused, or null to continue. Counts the request against the visitor's limits.
+ */
+export async function guard(req: Request, feature: Feature): Promise<Response | null> {
+  try {
+    if (await overBudget()) {
+      return json("Belle a reçu beaucoup de demandes aujourd'hui. Cette fonction revient demain.", 503);
+    }
+    const { id, signedIn } = await identify(req);
+    const l = LIMITS[feature];
+    const i = signedIn ? 1 : 0;
+    const hourWindow = Math.floor(Date.now() / (HOUR * 1000));
+    const [hour, day] = await Promise.all([
+      kv.incr(`rl:${feature}:${id}:h:${hourWindow}`, HOUR),
+      kv.incr(`rl:${feature}:${id}:d:${today()}`, DAY),
+    ]);
+    if (hour > l.perHour[i] || day > l.perDay[i]) {
+      const retry = day > l.perDay[i] ? "demain" : "dans une heure";
+      const hint = signedIn ? "" : " Connectez-vous pour en avoir davantage.";
+      const retryAfter = day > l.perDay[i] ? DAY : HOUR - (Math.floor(Date.now() / 1000) % HOUR);
+      return json(`Vous avez atteint la limite pour le moment, réessayez ${retry}.${hint}`, 429, { "Retry-After": String(retryAfter) });
+    }
+    return null;
+  } catch (err) {
+    // Store unreachable: fail closed, since an open endpoint costs money.
+    console.error("guard", err);
+    return json("Service momentanément indisponible, réessayez dans un instant.", 503);
+  }
+}
+
+/** True once today's estimated spend has reached the daily budget. */
+export async function overBudget(): Promise<boolean> {
+  return (await kv.getNumber(spendKey())) >= dailyBudget();
+}
+
+/** Adds a response's estimated cost to today's total. Never throws. */
+export async function recordUsage(usage: Anthropic.Beta.BetaUsage | null | undefined, label: string): Promise<void> {
+  if (!usage) return;
+  try {
+    const total = await kv.incrByFloat(spendKey(), costOf(usage), 2 * DAY);
+    if (total >= dailyBudget()) console.warn(`[budget] daily cap of $${dailyBudget()} reached (last call: ${label})`);
+  } catch (err) {
+    console.error("recordUsage", err);
+  }
+}

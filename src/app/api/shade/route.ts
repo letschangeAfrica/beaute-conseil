@@ -2,6 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod";
 import { z } from "zod";
 import { FALLBACK, MODEL, anthropic, hasApiKey } from "@/lib/claude";
+import { guard, recordUsage } from "@/lib/guard";
 import { ShadeSchema } from "@/lib/schemas";
 
 export const maxDuration = 60;
@@ -22,6 +23,8 @@ export async function POST(req: Request) {
   }
   const parsed = Body.safeParse(await req.json());
   if (!parsed.success) return Response.json({ error: "Image invalide" }, { status: 400 });
+  const blocked = await guard(req, "shade");
+  if (blocked) return blocked;
 
   try {
     const response = await anthropic.beta.messages.parse({
@@ -40,6 +43,7 @@ export async function POST(req: Request) {
         },
       ],
     });
+    await recordUsage(response.usage, "shade");
     if (response.stop_reason === "refusal" || !response.parsed_output) {
       return Response.json({ error: "Analyse impossible avec cette photo. Essayez à la lumière du jour, sans filtre." }, { status: 422 });
     }

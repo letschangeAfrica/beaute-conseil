@@ -2,6 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
 import { ProfileSchema, searchAndScore } from "@/lib/catalog";
 import { FALLBACK, MODEL, anthropic, hasApiKey, profileSummary } from "@/lib/claude";
+import { guard, overBudget, recordUsage } from "@/lib/guard";
 import { PRICE_DOMAINS } from "@/lib/stores";
 import type { Profile } from "@/lib/types";
 
@@ -75,6 +76,8 @@ export async function POST(req: Request) {
   }
   const parsed = Body.safeParse(await req.json());
   if (!parsed.success) return Response.json({ error: "Requête invalide" }, { status: 400 });
+  const blocked = await guard(req, "chat");
+  if (blocked) return blocked;
   const { profile } = parsed.data;
 
   const messages: Anthropic.Beta.BetaMessageParam[] = parsed.data.messages.map((m) => ({ role: m.role, content: m.content }));
@@ -85,6 +88,10 @@ export async function POST(req: Request) {
       const emit: Emit = (event) => controller.enqueue(encoder.encode(JSON.stringify(event) + "\n"));
       try {
         for (let turn = 0; turn < 8; turn++) {
+          if (turn > 0 && (await overBudget())) {
+            emit({ type: "text", text: "\n\nJe dois m'arrêter là pour aujourd'hui, réessayez demain." });
+            break;
+          }
           const response = anthropic.beta.messages.stream({
             model: MODEL,
             max_tokens: 64000,
@@ -115,6 +122,7 @@ export async function POST(req: Request) {
             }
           }
           const final = await response.finalMessage();
+          await recordUsage(final.usage, "chat");
           messages.push({ role: "assistant", content: final.content });
 
           if (final.stop_reason === "refusal") {

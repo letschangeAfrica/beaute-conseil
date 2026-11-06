@@ -1,10 +1,24 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
 import { FALLBACK, MODEL, anthropic, hasApiKey } from "@/lib/claude";
+import { guard, recordUsage } from "@/lib/guard";
+import { kv } from "@/lib/kv";
 import { PRICE_DOMAINS } from "@/lib/stores";
 import type { PricePoint } from "@/lib/types";
 
 export const maxDuration = 120;
+
+/** How long a price search is reused: 6 h when offers were found, 1 h when none were (retry sooner). */
+const CACHE_HIT_TTL = 6 * 3600;
+const CACHE_MISS_TTL = 3600;
+
+interface LiveReport {
+  offers: PricePoint[];
+  summary: string;
+  checkedAt: string;
+}
+
+const norm = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/\s+/g, " ").trim();
 
 const Body = z.object({
   name: z.string().min(1).max(200),
@@ -61,6 +75,15 @@ export async function POST(req: Request) {
   if (!parsed.success) return Response.json({ error: "Requête invalide" }, { status: 400 });
   const { name, brand, code, quantity, city } = parsed.data;
 
+  // Serve a recent search for the same product for free. City is left out of the key on purpose:
+  // online prices are national, and sharing the entry across visitors is what makes the cache pay off.
+  const cacheKey = `prices:v1:${code && /^\d{6,14}$/.test(code) ? code : [brand, name, quantity ?? ""].map(norm).join("|")}`;
+  const cached = await kv.getJSON<LiveReport>(cacheKey).catch(() => null);
+  if (cached) return Response.json(cached);
+
+  const blocked = await guard(req, "live-prices");
+  if (blocked) return blocked;
+
   const messages: Anthropic.Beta.BetaMessageParam[] = [
     {
       role: "user",
@@ -91,6 +114,7 @@ Cherche sur plusieurs enseignes (parfumeries, parapharmacies, grandes surfaces, 
         ],
         messages,
       });
+      await recordUsage(response.usage, "live-prices");
 
       if (response.stop_reason === "refusal") {
         return Response.json({ error: "La recherche de prix n'a pas pu aboutir." }, { status: 502 });
@@ -113,7 +137,9 @@ Cherche sur plusieurs enseignes (parfumeries, parapharmacies, grandes surfaces, 
             url: o.url,
           }))
           .sort((a, b) => a.price - b.price);
-        return Response.json({ offers, summary: report.data.summary });
+        const result: LiveReport = { offers, summary: report.data.summary, checkedAt: new Date().toISOString() };
+        await kv.setJSON(cacheKey, result, offers.length ? CACHE_HIT_TTL : CACHE_MISS_TTL).catch((e) => console.error("live-prices cache", e));
+        return Response.json(result);
       }
 
       // pause_turn (long server-side search) or a text-only turn: continue the conversation.
