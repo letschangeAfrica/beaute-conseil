@@ -11,7 +11,13 @@ const ROWS: [what: string, why: string, basis: string, where: string][] = [
     "Profil beauté : prénom, type de peau, sensibilité, carnation, préoccupations, allergies, ingrédients à éviter, préférences, budget, ville",
     "Calculer un score adapté à vous et personnaliser les conseils",
     "Votre consentement explicite (RGPD art. 6.1.a et 9.2.a : allergies et état de la peau peuvent être des données de santé)",
-    "Dans votre navigateur uniquement. Envoyé à notre serveur à chaque recherche ou fiche produit pour calculer le score, sans y être conservé. Gardé jusqu'à ce que vous le supprimiez.",
+    "Dans votre navigateur. Envoyé à notre serveur à chaque recherche ou fiche produit pour calculer le score, sans y être conservé. Gardé jusqu'à ce que vous le supprimiez.",
+  ],
+  [
+    "Copie du profil beauté et des favoris dans votre compte (seulement si vous activez « Retrouver mon profil sur tous mes appareils »)",
+    "Retrouver votre profil sur un autre téléphone ou ordinateur",
+    "Votre consentement explicite, donné en activant l'option (RGPD art. 9.2.a)",
+    "Chez Upstash, rattachée à votre adresse e-mail Google. Supprimée quand vous désactivez l'option ou effacez vos données, et automatiquement après 13 mois sans modification.",
   ],
   [
     "Selfie (photo du visage)",
@@ -23,7 +29,19 @@ const ROWS: [what: string, why: string, basis: string, where: string][] = [
     "Messages échangés avec la conseillère, accompagnés de votre profil",
     "Vous répondre",
     "Votre consentement (vous choisissez d'écrire)",
-    "Transmis à Anthropic, non conservés par Belle. La conversation disparaît quand vous fermez la page.",
+    "Transmis à Anthropic pour la réponse. Les 60 derniers messages sont gardés dans votre navigateur, jamais sur nos serveurs. Le bouton « Nouveau » les efface.",
+  ],
+  [
+    "Photo de la liste d'ingrédients d'un produit",
+    "Lire les ingrédients d'un produit absent de la base, pour calculer votre score",
+    "Exécution du service que vous demandez (art. 6.1.b)",
+    "Transmise à Anthropic, jamais enregistrée par Belle. La liste lue est gardée dans votre navigateur. Cadrez uniquement l'étiquette.",
+  ],
+  [
+    "Recherche de teinte : produit, carnation et sous-ton",
+    "Trouver les noms de teintes à essayer dans la gamme du produit",
+    "Exécution du service que vous demandez (art. 6.1.b)",
+    "Transmis à Anthropic. Le résultat, sans rien qui vous identifie, est gardé 14 jours pour être réutilisé.",
   ],
   [
     "Recherche de prix en ligne : nom du produit, marque, code-barres, ville",
@@ -59,7 +77,7 @@ export default function ConfidentialitePage() {
         <section className="card space-y-2 p-5">
           <h2>En bref</h2>
           <ul className="space-y-1">
-            <li>Votre profil beauté reste sur votre téléphone. Nous n&apos;avons pas de base de données d&apos;utilisatrices.</li>
+            <li>Votre profil beauté reste sur votre téléphone. Il n&apos;est enregistré dans votre compte que si vous activez la synchronisation.</li>
             <li>Votre selfie sert uniquement à l&apos;analyse de teint, puis il est supprimé. Nous ne le gardons jamais.</li>
             <li>Pas de publicité, pas de revente de données, pas de cookies de suivi.</li>
             <li>Vous pouvez tout effacer en un clic depuis votre profil.</li>
@@ -113,7 +131,7 @@ export default function ConfidentialitePage() {
               <b>Vercel Inc.</b> (États-Unis) : hébergement du site.
             </li>
             <li>
-              <b>Upstash</b> : stockage temporaire des compteurs de limite et du cache de prix.
+              <b>Upstash</b> : compteurs de limite, caches de prix et de teintes, et copie du profil si vous activez la synchronisation.
             </li>
             <li>
               <b>Google</b> : uniquement si vous choisissez « Continuer avec Google ».
@@ -138,7 +156,7 @@ export default function ConfidentialitePage() {
           <p>{LEGAL.appName} n&apos;utilise que ce qui est strictement nécessaire au fonctionnement, ce qui ne demande pas de consentement (article 82 de la loi Informatique et Libertés) :</p>
           <ul>
             <li>cookies de connexion et de sécurité, si vous vous connectez avec Google ;</li>
-            <li>stockage local du navigateur pour votre profil, vos favoris et vos choix de consentement.</li>
+            <li>stockage local du navigateur pour votre profil, vos favoris, la conversation, les ingrédients lus sur vos photos et vos choix de consentement.</li>
           </ul>
           <p>Aucun cookie publicitaire ni de mesure d&apos;audience.</p>
         </section>
@@ -151,7 +169,7 @@ export default function ConfidentialitePage() {
           </p>
           <ul>
             <li>
-              <b>Le plus simple :</b> dans <Link href="/profil">votre profil</Link>, le bouton « Supprimer mes données » efface tout ce qui est stocké sur votre appareil et vous déconnecte.
+              <b>Le plus simple :</b> dans <Link href="/profil">votre profil</Link>, le bouton « Supprimer mes données » efface tout ce qui est stocké sur votre appareil et dans votre compte, puis vous déconnecte.
             </li>
             <li>
               Pour toute autre demande : <a href={`mailto:${LEGAL.email}`}>{LEGAL.email}</a>. Nous répondons sous un mois.

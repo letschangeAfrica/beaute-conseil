@@ -1,8 +1,8 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
-import { parseBody } from "@/lib/api-utils";
+import { parseBody, requireApiKey } from "@/lib/api-utils";
 import { ProfileSchema, searchAndScore } from "@/lib/catalog";
-import { FALLBACK, MODEL, anthropic, hasApiKey, profileSummary } from "@/lib/claude";
+import { FALLBACK, MODEL, anthropic, profileSummary } from "@/lib/claude";
 import { guard, overBudget, recordUsage } from "@/lib/guard";
 import { PRICE_DOMAINS } from "@/lib/stores";
 import type { ChatEvent, Profile } from "@/lib/types";
@@ -73,9 +73,8 @@ async function runSearch(input: unknown, profile: Profile | null, emit: Emit) {
 }
 
 export async function POST(req: Request) {
-  if (!hasApiKey()) {
-    return Response.json({ error: "Clé API Anthropic manquante (ANTHROPIC_API_KEY dans .env.local)." }, { status: 503 });
-  }
+  const noKey = requireApiKey();
+  if (noKey) return noKey;
   const parsed = await parseBody(req, Body);
   if (!parsed.ok) return parsed.response;
   const blocked = await guard(req, "chat");
@@ -85,16 +84,28 @@ export async function POST(req: Request) {
   const messages: Anthropic.Beta.BetaMessageParam[] = parsed.data.messages.map((m) => ({ role: m.role, content: m.content }));
   const encoder = new TextEncoder();
 
+  // Set when the visitor closes the page: stop generating, and stop writing to a closed stream.
+  let closed = false;
+  let response: ReturnType<typeof anthropic.beta.messages.stream> | undefined;
+
   const stream = new ReadableStream({
     async start(controller) {
-      const emit: Emit = (event) => controller.enqueue(encoder.encode(JSON.stringify(event) + "\n"));
+      const emit: Emit = (event) => {
+        if (closed) return;
+        try {
+          controller.enqueue(encoder.encode(JSON.stringify(event) + "\n"));
+        } catch {
+          closed = true; // the client went away between two events
+          response?.abort();
+        }
+      };
       try {
-        for (let turn = 0; turn < 8; turn++) {
+        for (let turn = 0; turn < 8 && !closed; turn++) {
           if (turn > 0 && (await overBudget())) {
             emit({ type: "text", text: "\n\nJe dois m'arrêter là pour aujourd'hui, réessayez demain." });
             break;
           }
-          const response = anthropic.beta.messages.stream({
+          const turnStream = anthropic.beta.messages.stream({
             model: MODEL,
             max_tokens: 64000,
             ...FALLBACK,
@@ -115,15 +126,22 @@ export async function POST(req: Request) {
             ],
             messages,
           });
+          response = turnStream; // so cancel() / a failed emit can abort the turn in flight
 
-          for await (const event of response) {
-            if (event.type === "content_block_delta" && event.delta.type === "text_delta") {
-              emit({ type: "text", text: event.delta.text });
-            } else if (event.type === "content_block_start" && event.content_block.type === "server_tool_use") {
-              emit({ type: "status", text: "Je vérifie les prix en ligne…" });
+          try {
+            for await (const event of turnStream) {
+              if (event.type === "content_block_delta" && event.delta.type === "text_delta") {
+                emit({ type: "text", text: event.delta.text });
+              } else if (event.type === "content_block_start" && event.content_block.type === "server_tool_use") {
+                emit({ type: "status", text: "Je vérifie les prix en ligne…" });
+              }
             }
+          } finally {
+            // An aborted turn never reaches finalMessage(): still count the tokens it used against the budget.
+            // (Lower bound: the final output count only arrives with the last stream event.)
+            if (closed) await recordUsage(turnStream.currentMessage, "chat (client left)");
           }
-          const final = await response.finalMessage();
+          const final = await turnStream.finalMessage();
           await recordUsage(final, "chat");
           messages.push({ role: "assistant", content: final.content });
 
@@ -146,15 +164,21 @@ export async function POST(req: Request) {
           messages.push({ role: "user", content: results });
         }
       } catch (err) {
-        console.error("chat", err);
+        if (closed) return; // the visitor left: the abort is expected, not an error
+        const requestId = err instanceof Anthropic.APIError ? ` request-id=${err.requestID ?? "-"}` : "";
+        console.error(`[chat]${requestId}`, err);
         const msg =
           err instanceof Anthropic.RateLimitError
             ? "Trop de demandes, réessayez dans une minute."
             : "Oups, la conseillère est momentanément indisponible.";
         emit({ type: "error", text: msg });
       } finally {
-        controller.close();
+        if (!closed) controller.close();
       }
+    },
+    cancel() {
+      closed = true;
+      response?.abort();
     },
   });
 

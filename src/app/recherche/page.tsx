@@ -7,6 +7,7 @@ import ProductCard from "@/components/ProductCard";
 import { CardSkeleton, Notice, PageHeader } from "@/components/ui";
 import { useProfile } from "@/lib/useLocal";
 import type { ScoredProduct } from "@/lib/types";
+import { errorMessage, postJson } from "@/lib/utils";
 
 const QUICK = ["fond de teint", "mascara waterproof", "rouge à lèvres mat", "BB crème", "anticernes", "crème solaire SPF 50"];
 
@@ -28,17 +29,9 @@ function SearchInner() {
     let cancelled = false;
     setLoading(true);
     setError("");
-    fetch("/api/search", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ q: initial, profile }),
-    })
-      .then(async (r) => {
-        const json = await r.json();
-        if (!r.ok) throw new Error(json.error);
-        if (!cancelled) setResults(json.results);
-      })
-      .catch((e) => !cancelled && setError(e.message || "Une erreur est survenue."))
+    postJson<{ results: ScoredProduct[] }>("/api/search", { q: initial, profile })
+      .then((json) => !cancelled && setResults(json.results))
+      .catch((e) => !cancelled && setError(errorMessage(e)))
       .finally(() => !cancelled && setLoading(false));
     return () => {
       cancelled = true;

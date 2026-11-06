@@ -6,13 +6,26 @@ import ProductCard, { type CardData } from "@/components/ProductCard";
 import { FoundationIcon, LipstickIcon, MascaraIcon, CreamJarIcon } from "@/components/icons";
 import { Notice, Spinner } from "@/components/ui";
 import type { ChatEvent } from "@/lib/types";
-import { useProfile } from "@/lib/useLocal";
+import { KEYS, readLocal, useProfile, writeLocal } from "@/lib/useLocal";
+import { errorMessage } from "@/lib/utils";
 
 interface Msg {
   role: "user" | "assistant";
   content: string;
   products?: CardData[];
   status?: string;
+}
+
+/** Messages kept on the device. */
+const MAX_SAVED = 60;
+/** Messages sent to the AI as context (the API accepts up to 40). */
+const MAX_CONTEXT = 20;
+
+/** The last turns of the conversation, starting with a question, in the shape the API expects. */
+function recentTurns(history: Msg[]) {
+  const turns = history.filter((m) => m.content.trim()).slice(-MAX_CONTEXT);
+  while (turns.length && turns[0].role !== "user") turns.shift();
+  return turns.map(({ role, content }) => ({ role, content: content.slice(0, 8000) }));
 }
 
 const SUGGESTIONS = [
@@ -57,9 +70,22 @@ function Avatar() {
 export default function ConseillerePage() {
   const [profile, , ready] = useProfile();
   const [messages, setMessages] = useState<Msg[]>([]);
+  const [loaded, setLoaded] = useState(false);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const endRef = useRef<HTMLDivElement>(null);
+
+  // Restore the conversation saved on this device.
+  useEffect(() => {
+    setMessages(readLocal<Msg[]>(KEYS.chat, []));
+    setLoaded(true);
+  }, []);
+
+  // Save it once each answer is complete (not on every streamed word).
+  useEffect(() => {
+    if (!loaded || busy) return;
+    writeLocal(KEYS.chat, messages.length ? messages.slice(-MAX_SAVED).map((m) => ({ ...m, status: undefined })) : null);
+  }, [messages, busy, loaded]);
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
@@ -86,7 +112,7 @@ export default function ConseillerePage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           profile,
-          messages: history.filter((m) => m.content).map(({ role, content }) => ({ role, content })),
+          messages: recentTurns(history),
         }),
       });
       if (!res.ok || !res.body) {
@@ -125,7 +151,8 @@ export default function ConseillerePage() {
         }
       }
     } catch (e) {
-      update((m) => ({ ...m, content: e instanceof Error ? e.message : "Une erreur est survenue.", status: undefined }));
+      // Append, never replace: a dropped connection must not erase the part of the answer already shown.
+      update((m) => ({ ...m, content: (m.content ? m.content + "\n\n" : "") + errorMessage(e), status: undefined }));
     } finally {
       update((m) => ({ ...m, status: undefined }));
       setBusy(false);
@@ -219,7 +246,8 @@ export default function ConseillerePage() {
       </div>
 
       <p className="mt-4 px-2 text-center text-xs leading-relaxed text-ink/50">
-        Vos messages et votre profil sont traités par une IA (Anthropic) pour vous répondre, sans être conservés par Belle. Inutile de partager des informations médicales.{" "}
+        Vos messages et votre profil sont traités par une IA (Anthropic) pour vous répondre. La conversation est gardée sur votre téléphone, pas sur nos serveurs. Inutile de partager des
+        informations médicales.{" "}
         <Link href="/confidentialite" className="underline">
           En savoir plus
         </Link>

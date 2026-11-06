@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import { ArrowRight, Heart, MessageCircleHeart, ScanBarcode, Search, Sparkles, Eye } from "lucide-react";
 import { Avatar } from "@/components/AccountCard";
@@ -9,7 +9,7 @@ import { LegalLinks } from "@/components/LegalLinks";
 import { ProductImage } from "@/components/ProductCard";
 import { CleanserIcon, CompactIcon, ConcealerIcon, CreamJarIcon, FoundationIcon, LipstickIcon, MascaraIcon, SunscreenIcon } from "@/components/icons";
 import { Logo, SectionTitle } from "@/components/ui";
-import { useFavorites, useProfile } from "@/lib/useLocal";
+import { useFavorites, useOnboarded, useProfile } from "@/lib/useLocal";
 
 const CATEGORIES = [
   { q: "fond de teint", label: "Teint", Icon: FoundationIcon },
@@ -27,8 +27,14 @@ export default function Home() {
   const [profile, , ready] = useProfile();
   const { favs } = useFavorites();
   const { data: session, status } = useSession();
+  const [onboarded, , onboardedReady] = useOnboarded();
   const [q, setQ] = useState("");
   const router = useRouter();
+
+  // First visit: start with the three-question welcome flow.
+  useEffect(() => {
+    if (ready && onboardedReady && !profile && !onboarded) router.replace("/bienvenue");
+  }, [ready, onboardedReady, profile, onboarded, router]);
 
   const go = (query: string) => router.push(`/recherche?q=${encodeURIComponent(query)}`);
 
@@ -82,7 +88,7 @@ export default function Home() {
       </section>
 
       {ready && !profile && (
-        <Link href="/profil" className="card-interactive flex items-center gap-4 p-4">
+        <Link href="/bienvenue" className="card-interactive flex items-center gap-4 p-4">
           <span className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-gold text-brand">
             <Sparkles size={22} />
           </span>

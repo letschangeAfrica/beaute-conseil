@@ -11,10 +11,19 @@ import type { Reason, ScoredProduct } from "./types";
 
 /** User-facing fallback message (was hard-coded 7× in 4 pages). */
 export const GENERIC_ERROR = "Une erreur est survenue.";
+export const NETWORK_ERROR = "Connexion impossible. Vérifiez votre réseau et réessayez.";
 
-/** `e instanceof Error ? e.message : "Une erreur…"`, but also guards against empty messages. */
+/** Browsers reject fetch() with a TypeError on network failure; the wording differs per browser. */
+const isNetworkError = (e: unknown) => e instanceof TypeError && /fetch|network|load failed/i.test(e.message);
+
+/**
+ * A French, user-safe message for any caught error. Allow-list: only a plain `Error` — what our own code
+ * throws (postJson with the API's message, resizeImage) — shows its message. Browser, parser and
+ * programming errors (TypeError, SyntaxError "Unexpected token '<'…", DOMException…) get the fallback.
+ */
 export function errorMessage(e: unknown, fallback = GENERIC_ERROR): string {
-  return e instanceof Error && e.message ? e.message : fallback;
+  if (isNetworkError(e)) return NETWORK_ERROR;
+  return e instanceof Error && e.constructor === Error && e.message ? e.message : fallback;
 }
 
 /* ---------- HTTP (browser → our API routes) ----------------------------- */

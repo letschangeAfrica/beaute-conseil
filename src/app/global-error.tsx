@@ -1,8 +1,13 @@
 "use client";
+import { useEffect } from "react";
 import "./globals.css";
 
 /** Last resort when the root layout itself fails: it replaces the whole page, so it renders <html>. */
-export default function GlobalError({ reset }: { error: Error & { digest?: string }; reset: () => void }) {
+export default function GlobalError({ error, reset }: { error: Error & { digest?: string }; reset: () => void }) {
+  useEffect(() => {
+    console.error(error);
+  }, [error]);
+
   return (
     <html lang="fr">
       <body className="bg-cream font-sans text-ink antialiased">

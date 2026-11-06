@@ -12,21 +12,45 @@ import {
   Info,
   Palette,
   Repeat,
+  ScanText,
   ShieldAlert,
   Store,
   Tag,
 } from "lucide-react";
+import { IngredientPhoto, type LabelReading } from "@/components/IngredientPhoto";
 import ProductCard, { ProductImage } from "@/components/ProductCard";
+import { ShadeFinder } from "@/components/ShadeFinder";
 import { Notice, PageHeader, ScoreRing, SectionTitle, Skeleton, Spinner, VERDICT } from "@/components/ui";
 import { googleShoppingUrl, STORES } from "@/lib/stores";
-import { isComplexionProduct, shadeAdvice } from "@/lib/scoring";
-import { useFavorites, useProfile } from "@/lib/useLocal";
-import type { PricePoint, ScoredProduct } from "@/lib/types";
+import { isComplexionProduct, scoreProduct, shadeAdvice } from "@/lib/scoring";
+import { type LocalIngredients, readIngredients, saveIngredients, useFavorites, useProfile } from "@/lib/useLocal";
+import type { PricePoint, Product, Profile, ScoredProduct } from "@/lib/types";
+import { asBarcode, errorMessage, jsonPost, postJson, responseError } from "@/lib/utils";
 
 interface Detail {
   product: ScoredProduct;
   prices: PricePoint[];
   alternatives: ScoredProduct[];
+}
+
+/** Re-scores a product with the ingredient list read from her label photo, when the database has none. */
+function withPhotoIngredients(d: Detail, local: LocalIngredients | null, profile: Profile | null, force = false): Detail {
+  if (!local || (d.product.ingredientsText && !force)) return d;
+  return { ...d, product: scoreProduct({ ...d.product, ingredientsText: local.text }, profile, d.prices[0]) };
+}
+
+/** A product unknown to the database, built from her label photo alone. */
+function fromPhoto(code: string, local: LocalIngredients, profile: Profile | null): Detail {
+  const product: Product = {
+    code,
+    name: local.name || "Produit scanné",
+    brand: local.brand || "",
+    ingredientsText: local.text,
+    categories: [],
+    labels: [],
+    scans: 0,
+  };
+  return { product: scoreProduct(product, profile), prices: [], alternatives: [] };
 }
 
 const fmt = (n: number) => n.toLocaleString("fr-FR", { style: "currency", currency: "EUR" });
@@ -95,33 +119,78 @@ export default function ProduitPage({ params }: { params: Promise<{ code: string
     offers: [],
   });
 
+  const [photo, setPhoto] = useState<LocalIngredients | null>(null);
+  const [unknown, setUnknown] = useState(false);
+
   useEffect(() => {
     if (!ready) return;
-    fetch(`/api/product/${code}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ profile }) })
+    const local = readIngredients(code);
+    setPhoto(local);
+    fetch(`/api/product/${code}`, jsonPost({ profile }))
       .then(async (r) => {
-        const json = await r.json();
-        if (!r.ok) throw new Error(json.error);
-        setData(json);
+        if (r.status === 404 && asBarcode(code)) {
+          // Not in Open Beauty Facts: use the label photo she took earlier, if any.
+          if (local) setData(fromPhoto(code, local, profile));
+          else setUnknown(true);
+          return;
+        }
+        // Status first, body second: an error page that isn't JSON must not surface as a parser message.
+        if (!r.ok) throw new Error(await responseError(r));
+        setData(withPhotoIngredients(await r.json(), local, profile));
       })
-      .catch((e) => setError(e.message || "Une erreur est survenue."));
+      .catch((e) => setError(errorMessage(e)));
   }, [code, ready, profile]);
+
+  function onLabelRead(r: LabelReading) {
+    const local: LocalIngredients = { text: r.ingredientsText, name: r.productName || undefined, brand: r.brand || undefined, at: new Date().toISOString() };
+    saveIngredients(code, local);
+    setPhoto(local);
+    setUnknown(false);
+    setData((prev) => (prev ? withPhotoIngredients(prev, local, profile, true) : fromPhoto(code, local, profile)));
+  }
 
   async function checkLivePrices() {
     if (!data) return;
     setLive({ state: "loading", offers: [] });
     try {
-      const r = await fetch("/api/live-prices", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: data.product.name, brand: data.product.brand, code, quantity: data.product.quantity, city: profile?.city }),
+      const json = await postJson<{ offers: PricePoint[]; summary: string; checkedAt: string }>("/api/live-prices", {
+        name: data.product.name,
+        brand: data.product.brand,
+        code,
+        quantity: data.product.quantity,
+        city: profile?.city,
       });
-      const json = await r.json();
-      if (!r.ok) throw new Error(json.error);
       setLive({ state: "done", offers: json.offers, summary: json.summary, checkedAt: json.checkedAt });
     } catch (e) {
-      setLive({ state: "error", offers: [], error: e instanceof Error ? e.message : "Une erreur est survenue." });
+      setLive({ state: "error", offers: [], error: errorMessage(e) });
     }
   }
+
+  if (unknown && !data)
+    return (
+      <div className="space-y-4">
+        <PageHeader back eyebrow={`Code-barres ${code}`} title="Produit pas encore référencé" subtitle="Ce produit n'est pas dans la base Open Beauty Facts. Photographiez sa liste d'ingrédients : Belle la lit et vous donne votre score." />
+        <section className="card space-y-3 p-5">
+          <p className="flex items-center gap-2 font-bold">
+            <ScanText size={20} className="text-brand" /> Comment faire
+          </p>
+          <ol className="list-decimal space-y-1 pl-5 text-[0.95rem] text-ink/75">
+            <li>Retournez le produit et trouvez « Ingredients ».</li>
+            <li>Cadrez toute la liste, bien à plat, sans reflet.</li>
+          </ol>
+          <IngredientPhoto onRead={onLabelRead} />
+        </section>
+        <p className="text-center text-sm text-ink/60">
+          <Link href="/scanner" className="font-semibold text-brand underline">
+            Saisir un autre code
+          </Link>
+          {" · "}
+          <a href="https://world.openbeautyfacts.org/contribute" target="_blank" rel="noopener noreferrer" className="font-semibold text-brand underline">
+            Ajouter le produit à Open Beauty Facts
+          </a>
+        </p>
+      </div>
+    );
 
   if (error)
     return (
@@ -234,12 +303,43 @@ export default function ProduitPage({ params }: { params: Promise<{ code: string
           </ul>
         )}
 
-        {advice && (
-          <div className="mt-4 flex gap-3 rounded-2xl bg-gold/45 p-3.5 text-sm leading-relaxed">
-            <Palette size={20} className="mt-0.5 shrink-0 text-brand" />
-            <p>
-              <b>Votre teinte.</b> {advice}
+        {p.verdict === "inconnu" && !photo && (
+          <div className="mt-4 space-y-3 rounded-2xl bg-paper p-4 ring-1 ring-caramel/30">
+            <p className="text-[0.95rem]">
+              <b>Il manque la liste d&apos;ingrédients</b> pour vous donner un vrai score. Photographiez-la au dos du produit : Belle la lit pour vous.
             </p>
+            <IngredientPhoto onRead={onLabelRead} />
+          </div>
+        )}
+
+        {photo && (
+          <div className="mt-4 flex gap-3 rounded-2xl bg-paper p-3.5 text-sm leading-relaxed ring-1 ring-caramel/30">
+            <ScanText size={20} className="mt-0.5 shrink-0 text-brand" />
+            <div>
+              <p>
+                Ingrédients lus sur votre photo du {new Date(photo.at).toLocaleDateString("fr-FR")}. Vérifiez l&apos;étiquette en cas d&apos;allergie.
+              </p>
+              <a
+                href={`https://world.openbeautyfacts.org/product/${p.code}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mt-1 inline-flex items-center gap-1 font-semibold text-brand underline"
+              >
+                Aider les autres : compléter la fiche sur Open Beauty Facts <ExternalLink size={13} />
+              </a>
+            </div>
+          </div>
+        )}
+
+        {advice && profile && (
+          <div className="mt-4 space-y-3 rounded-2xl bg-gold/45 p-3.5 text-sm leading-relaxed">
+            <div className="flex gap-3">
+              <Palette size={20} className="mt-0.5 shrink-0 text-brand" />
+              <p>
+                <b>Votre teinte.</b> {advice}
+              </p>
+            </div>
+            <ShadeFinder name={p.name} brand={p.brand} code={p.code} profile={profile} />
           </div>
         )}
       </section>

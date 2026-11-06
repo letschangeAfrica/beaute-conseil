@@ -1,8 +1,11 @@
 "use client";
+import { useState } from "react";
 import Link from "next/link";
 import { signOut, useSession } from "next-auth/react";
-import { LogOut, UserRound } from "lucide-react";
+import { LogOut, RefreshCw, UserRound } from "lucide-react";
+import { useSyncEnabled } from "@/lib/useLocal";
 import { GoogleIcon } from "./GoogleIcon";
+import { deleteAccountCopy } from "./SyncManager";
 import { Skeleton } from "./ui";
 
 export function Avatar({ src, name, size = 44 }: { src?: string | null; name?: string | null; size?: number }) {
@@ -27,7 +30,7 @@ export function AccountCard({ callbackUrl = "/profil" }: { callbackUrl?: string 
       <section className="card flex flex-col gap-3 p-5 sm:flex-row sm:items-center">
         <div className="flex-1">
           <h2 className="font-bold">Votre compte</h2>
-          <p className="mt-0.5 text-sm text-ink/60">Connectez-vous ou créez un compte en un clic.</p>
+          <p className="mt-0.5 text-sm text-ink/60">Connectez-vous pour retrouver votre profil sur tous vos appareils. Pas de compte ? Le même bouton le crée.</p>
         </div>
         <Link href={`/connexion?callbackUrl=${encodeURIComponent(callbackUrl)}`} className="btn bg-white text-ink ring-1 ring-ink/15 hover:bg-paper">
           <GoogleIcon size={18} /> Continuer avec Google
@@ -38,15 +41,58 @@ export function AccountCard({ callbackUrl = "/profil" }: { callbackUrl?: string 
 
   const { name, email, image } = session.user;
   return (
-    <section className="card flex items-center gap-3 p-4">
-      <Avatar src={image} name={name} />
-      <div className="min-w-0 flex-1">
-        <p className="truncate font-bold">{name ?? "Mon compte"}</p>
-        {email && <p className="truncate text-sm text-ink/60">{email}</p>}
+    <section className="card overflow-hidden">
+      <div className="flex items-center gap-3 p-4">
+        <Avatar src={image} name={name} />
+        <div className="min-w-0 flex-1">
+          <p className="truncate font-bold">{name ?? "Mon compte"}</p>
+          {email && <p className="truncate text-sm text-ink/60">{email}</p>}
+        </div>
+        <button onClick={() => signOut({ redirectTo: "/" }).catch(() => (window.location.href = "/"))} className="btn-secondary px-3 py-2 text-sm" aria-label="Se déconnecter">
+          <LogOut size={16} /> <span className="hidden sm:inline">Se déconnecter</span>
+        </button>
       </div>
-      <button onClick={() => signOut({ redirectTo: "/" })} className="btn-secondary px-3 py-2 text-sm" aria-label="Se déconnecter">
-        <LogOut size={16} /> <span className="hidden sm:inline">Se déconnecter</span>
-      </button>
+      <SyncToggle />
     </section>
+  );
+}
+
+/** Opt-in switch for keeping the profile and favourites in the account (explicit consent: health data). */
+function SyncToggle() {
+  const [enabled, setEnabled, ready] = useSyncEnabled();
+  const [busy, setBusy] = useState(false);
+  if (!ready) return null;
+
+  async function change(on: boolean) {
+    if (on) return setEnabled(true);
+    if (!window.confirm("Arrêter la synchronisation et effacer la copie de votre profil enregistrée dans votre compte ? Il restera sur ce téléphone.")) return;
+    setBusy(true);
+    await deleteAccountCopy();
+    setEnabled(false);
+    setBusy(false);
+  }
+
+  return (
+    <label className="flex cursor-pointer items-start gap-3 border-t border-caramel/20 bg-paper/60 p-4">
+      <span className="mt-0.5 grid h-9 w-9 shrink-0 place-items-center rounded-full bg-gold/60 text-brand">
+        <RefreshCw size={18} />
+      </span>
+      <span className="flex-1">
+        <span className="block font-semibold">Retrouver mon profil sur tous mes appareils</span>
+        <span className="mt-0.5 block text-sm leading-relaxed text-ink/60">
+          {enabled
+            ? "Activé : votre profil (dont vos allergies) et vos favoris sont enregistrés dans votre compte."
+            : "En activant, vous acceptez que votre profil, dont vos allergies et l'état de votre peau, et vos favoris soient enregistrés dans votre compte. Vous pouvez arrêter quand vous voulez."}{" "}
+          <Link href="/confidentialite" className="font-semibold text-brand underline">
+            En savoir plus
+          </Link>
+        </span>
+      </span>
+      <span className="relative mt-1 inline-flex">
+        <input type="checkbox" className="peer sr-only" checked={enabled} disabled={busy} onChange={(e) => change(e.target.checked)} />
+        <span className="h-7 w-12 rounded-full bg-caramel/40 transition peer-checked:bg-brand" />
+        <span className="absolute left-1 top-1 h-5 w-5 rounded-full bg-white shadow transition peer-checked:translate-x-5" />
+      </span>
+    </label>
   );
 }

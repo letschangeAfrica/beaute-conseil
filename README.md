@@ -6,11 +6,12 @@ A mobile-first web app (in French) that helps someone in France pick makeup and 
 
 | Screen | What it does | Data |
 |---|---|---|
-| **Profil** | Skin tone, undertone, skin type, concerns, allergies, ingredients to avoid, budget. Optional selfie → AI shade analysis. | Stored in the browser (localStorage) |
+| **Bienvenue** | First visit: three quick steps (skin, tone, allergies) so scores are personal from the first search. | Browser |
+| **Profil** | Skin tone, undertone, skin type, concerns, allergies, ingredients to avoid, budget. Optional selfie → AI shade analysis. Optional sync to her Google account. | Browser; account copy in Redis if sync is on |
 | **Chercher** | Search any product; results ranked 0–100 for her profile with plain-language reasons. | Open Beauty Facts |
-| **Fiche produit** | Score breakdown, allergy warning, shade tip, prices reported in shops, **live online price comparison**, alternatives from other brands, full ingredient list. | Open Beauty Facts, Open Prices, Claude + web search |
+| **Fiche produit** | Score breakdown, allergy warning, **shade names to try** in the product's range, prices reported in shops, **live online price comparison**, alternatives from other brands, full ingredient list. Missing or unknown product → **photograph the ingredient list** and Claude reads it. | Open Beauty Facts, Open Prices, Claude + web search |
 | **Scanner** | Scan a barcode in a shop → instant verdict. | Camera (zxing) |
-| **Conseils** | Chat with "Belle", who knows her profile, searches real products and checks current prices. | Claude |
+| **Conseils** | Chat with "Belle", who knows her profile, searches real products and checks current prices. The conversation is kept on the phone. | Claude |
 
 ## Run it locally
 
@@ -64,7 +65,7 @@ The camera (scanner, selfie) only works over HTTPS. The easiest path is to deplo
 1. Push this folder to a GitHub repository.
 2. On https://vercel.com → *Add New Project* → import the repo.
 3. In *Environment Variables*, add `ANTHROPIC_API_KEY`.
-4. Deploy, open the URL on the phone, and use "Ajouter à l'écran d'accueil".
+4. Deploy, open the URL on the phone, and use "Ajouter à l'écran d'accueil" (Android: Chrome menu → *Installer l'application*; iPhone: Safari → Partager → *Sur l'écran d'accueil*). The app opens full screen with its own icon ([manifest.ts](src/app/manifest.ts), icons in [public/icons/](public/icons/)).
 
 ## How the score works
 

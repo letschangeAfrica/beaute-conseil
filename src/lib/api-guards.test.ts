@@ -1,3 +1,4 @@
+import Anthropic from "@anthropic-ai/sdk";
 import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 
@@ -5,8 +6,56 @@ import { z } from "zod";
 vi.mock("server-only", () => ({}));
 vi.mock("@/auth", () => ({ auth: async () => null }));
 
-const { parseBody } = await import("./api-utils");
+const { anthropicErrorResponse, parseBody } = await import("./api-utils");
 const { costOf } = await import("./guard");
+
+describe("anthropicErrorResponse: every error becomes a JSON response (never a raw 500)", () => {
+  const quiet = () => vi.spyOn(console, "error").mockImplementation(() => {});
+
+  it("rate limit → 429 and forwards Anthropic's Retry-After", async () => {
+    const err = new Anthropic.RateLimitError(429, undefined, "rate limited", new Headers({ "retry-after": "12" }));
+    const res = anthropicErrorResponse(err, "test", "Service indisponible.");
+    expect(res.status).toBe(429);
+    expect(res.headers.get("Retry-After")).toBe("12");
+    expect(await res.json()).toEqual({ error: "Trop de demandes, réessayez dans une minute." });
+  });
+
+  it("API error → 502 with the route's message, request-id in the log only", async () => {
+    const log = quiet();
+    const err = new Anthropic.InternalServerError(500, undefined, "overloaded", new Headers({ "request-id": "req_123" }));
+    const res = anthropicErrorResponse(err, "test", "Service d'analyse indisponible.");
+    expect(res.status).toBe(502);
+    expect(await res.json()).toEqual({ error: "Service d'analyse indisponible." });
+    expect(String(log.mock.calls[0][0])).toContain("request-id=req_123");
+    log.mockRestore();
+  });
+
+  it("structured-output parse failure (plain AnthropicError) → 500 JSON, details not exposed", async () => {
+    const log = quiet();
+    const res = anthropicErrorResponse(new Anthropic.AnthropicError("Failed to parse structured output: …"), "shade", "x");
+    expect(res.status).toBe(500);
+    const body = await res.json();
+    expect(body.error).toMatch(/inattendue/);
+    expect(JSON.stringify(body)).not.toContain("parse");
+    log.mockRestore();
+  });
+});
+
+describe("parseBody: the message can name the field that failed", () => {
+  const Shade = z.object({ image: z.string(), consent: z.literal(true) });
+  const msg = (e: z.ZodError) => (e.issues.some((i) => i.path[0] === "consent") ? "Consentement requis" : "Image invalide");
+  const req = (body: unknown) => new Request("http://test/api", { method: "POST", body: JSON.stringify(body) });
+
+  it("missing consent → consent message", async () => {
+    const r = await parseBody(req({ image: "x", consent: false }), Shade, msg);
+    expect(!r.ok && (await r.response.json())).toEqual({ error: "Consentement requis" });
+  });
+
+  it("bad image → image message", async () => {
+    const r = await parseBody(req({ image: 1, consent: true }), Shade, msg);
+    expect(!r.ok && (await r.response.json())).toEqual({ error: "Image invalide" });
+  });
+});
 
 const post = (body: string) => new Request("http://test/api", { method: "POST", body, headers: { "Content-Type": "application/json" } });
 const Body = z.object({ q: z.string().min(2) });

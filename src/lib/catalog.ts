@@ -47,7 +47,8 @@ async function findAlternatives(
     // Prefer other brands, so the list works as a "dupe finder".
     const otherBrands = scored.filter((p) => p.brand.toLowerCase() !== product.brand.toLowerCase());
     return (otherBrands.length >= 3 ? otherBrands : scored).slice(0, 6);
-  } catch {
+  } catch (err) {
+    console.warn("[alternatives]", err); // the product page still renders, just without alternatives
     return [];
   }
 }

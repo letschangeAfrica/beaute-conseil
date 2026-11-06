@@ -23,8 +23,11 @@ interface RawPrice {
 export async function getReportedPrices(code: string): Promise<PricePoint[]> {
   const params = new URLSearchParams({ product_code: code, order_by: "-date", size: "30" });
   try {
-    const res = await fetch(`${BASE}/prices?${params}`, { next: { revalidate: 1800 } });
-    if (!res.ok) return [];
+    const res = await fetch(`${BASE}/prices?${params}`, { next: { revalidate: 1800 }, signal: AbortSignal.timeout(8_000) });
+    if (!res.ok) {
+      console.warn(`[prices] Open Prices ${res.status} for ${code}`);
+      return [];
+    }
     const data = (await res.json()) as { items: RawPrice[] };
     return data.items
       .filter((p) => p.currency === "EUR" && p.price > 0)
@@ -37,7 +40,8 @@ export async function getReportedPrices(code: string): Promise<PricePoint[]> {
         source: "open-prices" as const,
       }))
       .sort((a, b) => a.price - b.price);
-  } catch {
+  } catch (err) {
+    console.warn("[prices]", err); // degrade to "no store prices", but leave a trace
     return [];
   }
 }

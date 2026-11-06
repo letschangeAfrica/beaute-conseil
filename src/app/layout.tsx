@@ -10,6 +10,10 @@ const heading = Fraunces({ variable: "--font-heading", subsets: ["latin"], style
 export const metadata: Metadata = {
   title: "Belle · Conseillère beauté",
   description: "Trouvez le maquillage qui vous va vraiment, au meilleur prix.",
+  applicationName: "Belle",
+  // iOS reads these instead of the manifest when adding to the home screen.
+  appleWebApp: { capable: true, title: "Belle", statusBarStyle: "default" },
+  formatDetection: { telephone: false },
 };
 
 export const viewport: Viewport = {

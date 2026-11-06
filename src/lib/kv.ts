@@ -16,6 +16,7 @@ export interface KV {
   getNumber(key: string): Promise<number>;
   getJSON<T>(key: string): Promise<T | null>;
   setJSON(key: string, value: unknown, ttlSeconds: number): Promise<void>;
+  del(key: string): Promise<void>;
 }
 
 function redisKV(redis: Redis): KV {
@@ -36,6 +37,9 @@ function redisKV(redis: Redis): KV {
     },
     async setJSON(key, value, ttl) {
       await redis.set(key, value, { ex: ttl });
+    },
+    async del(key) {
+      await redis.del(key);
     },
   };
 }
@@ -71,6 +75,9 @@ function memoryKV(): KV {
     },
     async setJSON(key, value, ttl) {
       store.set(key, { value, expires: Date.now() + ttl * 1000 });
+    },
+    async del(key) {
+      store.delete(key);
     },
   };
 }

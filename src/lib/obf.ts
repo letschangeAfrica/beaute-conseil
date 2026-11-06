@@ -60,6 +60,8 @@ async function obfFetch(url: string, revalidate: number) {
   const res = await fetch(url, {
     headers: { "User-Agent": UA },
     next: { revalidate },
+    // Fail fast instead of holding the route until the platform kills it.
+    signal: AbortSignal.timeout(8_000),
   });
   if (!res.ok) throw new Error(`Open Beauty Facts ${res.status}`);
   return res.json();

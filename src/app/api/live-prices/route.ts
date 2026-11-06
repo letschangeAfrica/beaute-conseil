@@ -1,7 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
-import { parseBody } from "@/lib/api-utils";
-import { FALLBACK, MODEL, anthropic, hasApiKey } from "@/lib/claude";
+import { anthropicErrorResponse, parseBody, requireApiKey } from "@/lib/api-utils";
+import { FALLBACK, MODEL, anthropic } from "@/lib/claude";
 import { guard, recordUsage } from "@/lib/guard";
 import { kv } from "@/lib/kv";
 import { PRICE_DOMAINS } from "@/lib/stores";
@@ -70,9 +70,8 @@ const reportTool: Anthropic.Beta.BetaTool = {
 };
 
 export async function POST(req: Request) {
-  if (!hasApiKey()) {
-    return Response.json({ error: "Clé API Anthropic manquante (ANTHROPIC_API_KEY dans .env.local)." }, { status: 503 });
-  }
+  const noKey = requireApiKey();
+  if (noKey) return noKey;
   const parsed = await parseBody(req, Body);
   if (!parsed.ok) return parsed.response;
   const { name, brand, code, quantity, city } = parsed.data;
@@ -81,7 +80,10 @@ export async function POST(req: Request) {
   // online prices are national, and sharing the entry across visitors is what makes the cache pay off.
   const barcode = code ? asBarcode(code) : null;
   const cacheKey = `prices:v1:${barcode ?? [brand, name, quantity ?? ""].map(norm).join("|")}`;
-  const cached = await kv.getJSON<LiveReport>(cacheKey).catch(() => null);
+  const cached = await kv.getJSON<LiveReport>(cacheKey).catch((e) => {
+    console.warn("[live-prices] cache read", e); // degrade to a live search
+    return null;
+  });
   if (cached) return Response.json(cached);
 
   const blocked = await guard(req, "live-prices");
@@ -100,23 +102,27 @@ Cherche sur plusieurs enseignes (parfumeries, parapharmacies, grandes surfaces, 
 
   try {
     for (let turn = 0; turn < 4; turn++) {
-      const response = await anthropic.beta.messages.create({
-        model: MODEL,
-        max_tokens: 16000,
-        ...FALLBACK,
-        output_config: { effort: "medium" },
-        tools: [
-          {
-            type: "web_search_20260209",
-            name: "web_search",
-            max_uses: 6,
-            allowed_domains: PRICE_DOMAINS,
-            user_location: { type: "approximate", country: "FR", ...(city ? { city } : {}) },
-          },
-          reportTool,
-        ],
-        messages,
-      });
+      const response = await anthropic.beta.messages.create(
+        {
+          model: MODEL,
+          max_tokens: 16000,
+          ...FALLBACK,
+          output_config: { effort: "medium" },
+          tools: [
+            {
+              type: "web_search_20260209",
+              name: "web_search",
+              max_uses: 6,
+              allowed_domains: PRICE_DOMAINS,
+              user_location: { type: "approximate", country: "FR", ...(city ? { city } : {}) },
+            },
+            reportTool,
+          ],
+          messages,
+        },
+        // maxDuration is 120 s for up to 4 turns: keep each turn short instead of the SDK's 10-minute default.
+        { timeout: 25_000, maxRetries: 1 },
+      );
       await recordUsage(response, "live-prices");
 
       if (response.stop_reason === "refusal") {
@@ -141,7 +147,7 @@ Cherche sur plusieurs enseignes (parfumeries, parapharmacies, grandes surfaces, 
           }))
           .sort((a, b) => a.price - b.price);
         const result: LiveReport = { offers, summary: report.data.summary, checkedAt: new Date().toISOString() };
-        await kv.setJSON(cacheKey, result, offers.length ? CACHE_HIT_TTL : CACHE_MISS_TTL).catch((e) => console.error("live-prices cache", e));
+        await kv.setJSON(cacheKey, result, offers.length ? CACHE_HIT_TTL : CACHE_MISS_TTL).catch((e) => console.error("[live-prices] cache write", e));
         return Response.json(result);
       }
 
@@ -151,15 +157,9 @@ Cherche sur plusieurs enseignes (parfumeries, parapharmacies, grandes surfaces, 
         messages.push({ role: "user", content: "Appelle maintenant report_prices avec ce que tu as trouvé." });
       }
     }
-    return Response.json({ error: "Aucun prix trouvé pour le moment." }, { status: 504 });
+    // The model never called report_prices: an upstream failure (502), not a gateway timeout (504).
+    return Response.json({ error: "Aucun prix trouvé pour le moment." }, { status: 502 });
   } catch (err) {
-    if (err instanceof Anthropic.RateLimitError) {
-      return Response.json({ error: "Trop de demandes, réessayez dans une minute." }, { status: 429 });
-    }
-    if (err instanceof Anthropic.APIError) {
-      console.error("live-prices", err.status, err.message);
-      return Response.json({ error: "Service de prix indisponible." }, { status: 502 });
-    }
-    throw err;
+    return anthropicErrorResponse(err, "live-prices", "Service de prix indisponible.");
   }
 }

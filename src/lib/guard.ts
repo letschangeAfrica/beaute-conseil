@@ -11,13 +11,15 @@ import { kv } from "./kv";
 
 /* ---------- Limits (edit here) ---------------------------------------- */
 
-type Feature = "chat" | "live-prices" | "shade";
+type Feature = "chat" | "live-prices" | "shade" | "ingredients" | "shade-match";
 
 /** Requests allowed per visitor. Signed-in users get the higher numbers. */
 const LIMITS: Record<Feature, { perHour: [anon: number, user: number]; perDay: [anon: number, user: number] }> = {
   chat: { perHour: [10, 30], perDay: [25, 100] },
   "live-prices": { perHour: [5, 15], perDay: [15, 50] }, // cache hits don't count
   shade: { perHour: [3, 6], perDay: [5, 15] },
+  ingredients: { perHour: [5, 15], perDay: [10, 40] },
+  "shade-match": { perHour: [4, 12], perDay: [10, 30] }, // cache hits don't count
 };
 
 /** Total estimated Claude spend allowed per UTC day, across all visitors. Override with DAILY_BUDGET_USD. */
@@ -100,7 +102,7 @@ export async function guard(req: Request, feature: Feature): Promise<Response | 
     return null;
   } catch (err) {
     // Store unreachable: fail closed, since an open endpoint costs money.
-    console.error("guard", err);
+    console.error("[guard]", err);
     return json("Service momentanément indisponible, réessayez dans un instant.", 503);
   }
 }
@@ -120,6 +122,6 @@ export async function recordUsage(
     const total = await kv.incrByFloat(spendKey(), costOf(message.usage, message.model), 2 * DAY);
     if (total >= dailyBudget()) console.warn(`[budget] daily cap of $${dailyBudget()} reached (last call: ${label})`);
   } catch (err) {
-    console.error("recordUsage", err);
+    console.error("[budget] recordUsage", err);
   }
 }
