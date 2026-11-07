@@ -31,9 +31,9 @@ export function PageHeader({ title, subtitle, back = false, eyebrow }: { title: 
       {back && (
         <button
           onClick={() => router.back()}
-          className="-ml-2 mb-2 inline-flex items-center gap-1.5 rounded-full px-2 py-1 text-sm font-semibold text-ink/70 hover:text-brand"
+          className="-ml-2 mb-1 inline-flex min-h-11 items-center gap-1.5 rounded-full px-2 text-sm font-semibold text-ink/75 hover:text-brand"
         >
-          <ArrowLeft size={18} /> Retour
+          <ArrowLeft size={18} aria-hidden="true" /> Retour
         </button>
       )}
       {eyebrow && <p className="eyebrow mb-1.5">{eyebrow}</p>}

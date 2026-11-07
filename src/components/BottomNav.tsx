@@ -14,13 +14,13 @@ const ITEMS = [
 /**
  * Floating dock, on every screen size. It sits above the iPhone home indicator
  * (safe-area-inset-bottom); <main> keeps pb-32 so it never covers content.
- * Hidden on /bienvenue, which pins its own action bar instead, and while the scanner's camera runs
+ * Hidden on /bienvenue (it pins its own action bar) and /connexion (focus screen), and while the scanner's camera runs
  * (<html data-camera="on">, see globals.css), so "Arrêter" owns the bottom of the screen.
  */
 export default function BottomNav() {
   const path = usePathname();
-  // The welcome flow is a focused, one-question-at-a-time screen with its own pinned action bar.
-  if (path.startsWith("/bienvenue")) return null;
+  // Focus screens: the welcome flow (its own pinned action bar) and sign-in ("Continuer sans compte" is the way out).
+  if (path.startsWith("/bienvenue") || path.startsWith("/connexion")) return null;
   return (
     <nav
       className="bottom-nav pointer-events-none fixed inset-x-0 bottom-0 z-30 px-3 pb-[max(env(safe-area-inset-bottom),0.75rem)] print:hidden"

@@ -256,3 +256,41 @@ html[data-keyboard="on"] .chat-composer {
 .save-bar {
   bottom: calc(max(env(safe-area-inset-bottom), 0.75rem) + 4.6rem);
 }
+
+/* ---------- Long-form documents (legal pages) ---------- */
+
+/*
+ * Readable prose: 1rem body at 1.65, ink/85, paragraphs capped near 70 characters,
+ * underlined links that wrap anywhere (e-mail addresses, URLs).
+ */
+@utility prose-legal {
+  @apply text-base leading-[1.65] text-ink/85;
+  & p,
+  & li {
+    max-width: 38rem;
+  }
+  & a:not(.no-underline) {
+    @apply font-semibold text-brand underline decoration-brand/40 underline-offset-[3px] [overflow-wrap:anywhere] hover:decoration-brand;
+  }
+  & strong {
+    @apply font-semibold text-ink;
+  }
+}
+
+@media print {
+  /* Paper: no navigation chrome, link destinations written out, table rows kept whole. */
+  .prose-legal a[href^="http"]::after,
+  .prose-legal a[href^="mailto:"]::after {
+    content: " (" attr(href) ")";
+    font-weight: 400;
+    color: var(--color-ink);
+    word-break: break-all;
+  }
+  .prose-legal tr,
+  .prose-legal .break-inside-avoid {
+    break-inside: avoid;
+  }
+  main {
+    padding-bottom: 0 !important;
+  }
+}
