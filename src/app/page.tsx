@@ -40,7 +40,7 @@ export default function Home() {
   return (
     <div data-layout="wide" className="flex flex-col gap-section">
       {/* ---------- Top bar + hero, over the living backdrop (full bleed, decorative) ---------- */}
-      <div className="relative isolate -mx-4 -mt-6 flex flex-col gap-10 px-4 pb-10 pt-6 sm:-mx-6 sm:gap-12 sm:px-6 lg:-mx-10 lg:gap-14 lg:px-10 lg:pb-14">
+      <div className="relative isolate -mx-4 -mt-6 flex flex-col gap-10 px-4 pb-16 pt-6 sm:-mx-6 sm:gap-12 sm:px-6 lg:-mx-10 lg:gap-14 lg:px-10 lg:pb-14">
         <HeroBackdrop />
         <header className="flex h-12 items-center justify-between gap-3">
           <Logo />

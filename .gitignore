@@ -44,3 +44,6 @@ next-env.d.ts
 
 # audit reports (local only)
 /audits/
+
+# Evaluation runs (transcripts, may be large)
+/evals/advisor/runs/

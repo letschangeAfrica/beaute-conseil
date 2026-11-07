@@ -316,21 +316,13 @@ function SearchInner() {
         {showResults && all.length > 1 && (
           <label className="flex shrink-0 items-center gap-2 text-sm text-ink/75">
             <span className="font-semibold">Trier</span>
-            <span className="relative">
-              <select
-                value={sort}
-                onChange={(e) => setSort(e.target.value as Sort)}
-                className="min-h-11 appearance-none rounded-full bg-white py-2 pl-4 pr-9 font-semibold text-ink ring-1 ring-line hover:ring-caramel focus-visible:ring-2 focus-visible:ring-brand"
-              >
-                <option value="pertinence">Pertinence</option>
-                <option value="score">Meilleur score</option>
-              </select>
-              <ArrowRight
-                size={14}
-                aria-hidden="true"
-                className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 rotate-90 text-ink/60"
-              />
-            </span>
+            <select
+              value={sort}
+              onChange={(e) => setSort(e.target.value as Sort)}
+            >
+              <option value="pertinence">Pertinence</option>
+              <option value="score">Meilleur score</option>
+            </select>
           </label>
         )}
       </header>
