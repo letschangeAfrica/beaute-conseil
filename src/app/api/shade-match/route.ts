@@ -5,6 +5,8 @@ import { FALLBACK, MODEL, anthropic } from "@/lib/claude";
 import { guard, recordUsage } from "@/lib/guard";
 import { kv } from "@/lib/kv";
 import { SKIN_TONE_VALUES, UNDERTONE_VALUES } from "@/lib/types";
+import { getProduct } from "@/lib/obf";
+import { cleanText, fence, isSafeWebUrl, UNTRUSTED_RULE } from "@/lib/untrusted";
 import { asBarcode } from "@/lib/utils";
 
 export const maxDuration = 120;
@@ -78,18 +80,21 @@ const TONE: Record<string, string> = {
 };
 const UNDERTONE: Record<string, string> = { chaud: "chaud", froid: "froid", neutre: "neutre", olive: "olive", inconnu: "inconnu" };
 
-const norm = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/\s+/g, " ").trim();
 
 export async function POST(req: Request) {
   const noKey = requireApiKey();
   if (noKey) return noKey;
   const parsed = await parseBody(req, Body);
   if (!parsed.ok) return parsed.response;
-  const { name, brand, code, skinTone, undertone } = parsed.data;
+  const { code, skinTone, undertone } = parsed.data;
 
-  const product = (code && asBarcode(code)) || [brand, name].map(norm).join("|");
-  const cacheKey = `shades:v1:${product}:${skinTone}:${undertone}`;
-  const cached = await kv.getJSON<ShadeMatch>(cacheKey).catch(() => null);
+  // Trust the barcode, not the browser (see live-prices): a verified product's name and brand come from
+  // Open Beauty Facts, and only verified products use the shared cache. v2 drops entries cached before this.
+  const barcode = code ? asBarcode(code) : null;
+  const known = barcode ? await getProduct(barcode).catch(() => null) : null;
+  const { name, brand } = known ?? parsed.data;
+  const cacheKey = known && barcode ? `shades:v2:${barcode}:${skinTone}:${undertone}` : null;
+  const cached = cacheKey ? await kv.getJSON<ShadeMatch>(cacheKey).catch(() => null) : null;
   if (cached) return Response.json(cached);
 
   const blocked = await guard(req, "shade-match");
@@ -98,8 +103,8 @@ export async function POST(req: Request) {
   const messages: Anthropic.Beta.BetaMessageParam[] = [
     {
       role: "user",
-      content: `Produit de teint : ${name}
-Marque : ${brand || "inconnue"}${code ? `\nCode-barres : ${code}` : ""}
+      content: `Produit de teint :
+${fence(known ? "open-beauty-facts" : "navigateur", JSON.stringify({ produit: cleanText(name, 200), marque: cleanText(brand, 100) || "inconnue", code_barres: barcode ?? undefined }))}
 Carnation : ${TONE[skinTone]}. Sous-ton : ${UNDERTONE[undertone]}.
 
 Trouve la gamme de teintes de CE produit (site de la marque ou revendeurs français), puis choisis les 1 à 3 teintes les plus proches de cette carnation et de ce sous-ton. Utilise les noms et numéros exacts de la gamme. Si tu ne trouves pas la gamme, mets found à false et une liste vide : n'invente aucune teinte. Termine en appelant report_shades.`,
@@ -113,6 +118,7 @@ Trouve la gamme de teintes de CE produit (site de la marque ou revendeurs franç
         max_tokens: 16000,
         ...FALLBACK,
         output_config: { effort: "medium" },
+        system: `Tu aides à choisir une teinte de maquillage dans la gamme réelle d'un produit.\n\n${UNTRUSTED_RULE}`,
         tools: [{ type: "web_search_20260209", name: "web_search", max_uses: 4, user_location: { type: "approximate", country: "FR" } }, reportTool],
         messages,
       });
@@ -124,14 +130,16 @@ Trouve la gamme de teintes de CE produit (site de la marque ou revendeurs franç
         const report = Report.safeParse(call.input);
         if (!report.success) return jsonError("Réponse illisible, réessayez.", 502);
         const r = report.data;
+        // Checked in code: short texts, and a source link only if it is a plain https page.
+        const shades = r.found ? r.shades.map((x) => ({ name: cleanText(x.name, 80), why: cleanText(x.why, 200) })).filter((x) => x.name) : [];
         const result: ShadeMatch = {
-          found: r.found && r.shades.length > 0,
-          shades: r.found ? r.shades : [],
-          tip: r.tip,
-          sourceUrl: /^https?:\/\//.test(r.source_url) ? r.source_url : undefined,
+          found: shades.length > 0,
+          shades,
+          tip: cleanText(r.tip, 300),
+          sourceUrl: isSafeWebUrl(r.source_url) ? r.source_url : undefined,
           checkedAt: new Date().toISOString(),
         };
-        await kv.setJSON(cacheKey, result, CACHE_TTL).catch((e) => console.error("shade-match cache", e));
+        if (cacheKey) await kv.setJSON(cacheKey, result, CACHE_TTL).catch((e) => console.error("shade-match cache", e));
         return Response.json(result);
       }
 

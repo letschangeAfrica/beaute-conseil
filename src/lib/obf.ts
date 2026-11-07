@@ -45,7 +45,7 @@ interface RawProduct {
 /** "Period after opening" (the open-jar symbol, e.g. 12M) in months, from tags like "en:12-months". */
 export function paoMonths(tags?: string[]): number | undefined {
   for (const t of tags ?? []) {
-    const m = /^en:(d{1,2})-months?$/.exec(t);
+    const m = /^en:(\d{1,2})-months?$/.exec(t);
     if (m && Number(m[1]) > 0) return Number(m[1]);
   }
   return undefined;

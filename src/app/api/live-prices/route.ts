@@ -6,6 +6,8 @@ import { guard, recordUsage } from "@/lib/guard";
 import { kv } from "@/lib/kv";
 import { PRICE_DOMAINS } from "@/lib/stores";
 import type { PricePoint } from "@/lib/types";
+import { getProduct } from "@/lib/obf";
+import { cleanText, fence, isAllowedUrl, UNTRUSTED_RULE } from "@/lib/untrusted";
 import { asBarcode } from "@/lib/utils";
 
 export const maxDuration = 120;
@@ -20,7 +22,6 @@ interface LiveReport {
   checkedAt: string;
 }
 
-const norm = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/\s+/g, " ").trim();
 
 const Body = z.object({
   name: z.string().min(1).max(200),
@@ -74,16 +75,24 @@ export async function POST(req: Request) {
   if (noKey) return noKey;
   const parsed = await parseBody(req, Body);
   if (!parsed.ok) return parsed.response;
-  const { name, brand, code, quantity, city } = parsed.data;
+  const { code, city } = parsed.data;
 
-  // Serve a recent search for the same product for free. City is left out of the key on purpose:
-  // online prices are national, and sharing the entry across visitors is what makes the cache pay off.
+  // Trust the barcode, not the browser: when Open Beauty Facts knows the code, its name, brand and size
+  // replace what the page sent. Otherwise anyone could pair a real barcode with a crafted "name" and
+  // poison the shared cache that every visitor reads.
   const barcode = code ? asBarcode(code) : null;
-  const cacheKey = `prices:v1:${barcode ?? [brand, name, quantity ?? ""].map(norm).join("|")}`;
-  const cached = await kv.getJSON<LiveReport>(cacheKey).catch((e) => {
-    console.warn("[live-prices] cache read", e); // degrade to a live search
-    return null;
-  });
+  const known = barcode ? await getProduct(barcode).catch(() => null) : null;
+  const product = known ? { name: known.name, brand: known.brand, quantity: known.quantity } : parsed.data;
+
+  // Shared cache (free for everyone) only for verified products. City is left out of the key on purpose:
+  // online prices are national. v2: entries written before this check are never read again.
+  const cacheKey = known && barcode ? `prices:v2:${barcode}` : null;
+  const cached = cacheKey
+    ? await kv.getJSON<LiveReport>(cacheKey).catch((e) => {
+        console.warn("[live-prices] cache read", e); // degrade to a live search
+        return null;
+      })
+    : null;
   if (cached) return Response.json(cached);
 
   const blocked = await guard(req, "live-prices");
@@ -92,10 +101,16 @@ export async function POST(req: Request) {
   const messages: Anthropic.Beta.BetaMessageParam[] = [
     {
       role: "user",
-      content: `Trouve le prix actuel de ce produit chez les revendeurs français en ligne :
-Produit : ${name}
-Marque : ${brand || "inconnue"}
-${quantity ? `Contenance : ${quantity}\n` : ""}${code ? `Code-barres EAN : ${code}\n` : ""}
+      content: `Trouve le prix actuel de ce produit chez les revendeurs français en ligne. Ses informations :
+${fence(
+  known ? "open-beauty-facts" : "navigateur",
+  JSON.stringify({
+    produit: cleanText(product.name, 200),
+    marque: cleanText(product.brand, 100) || "inconnue",
+    contenance: cleanText(product.quantity, 50) || undefined,
+    code_barres: barcode ?? undefined,
+  }),
+)}
 Cherche sur plusieurs enseignes (parfumeries, parapharmacies, grandes surfaces, Amazon.fr). Ne garde que les offres pour CE produit (même marque, même gamme ; signale si la contenance diffère). N'invente aucun prix : si tu ne trouves pas, renvoie une liste vide. Termine en appelant report_prices.`,
     },
   ];
@@ -108,6 +123,7 @@ Cherche sur plusieurs enseignes (parfumeries, parapharmacies, grandes surfaces, 
           max_tokens: 16000,
           ...FALLBACK,
           output_config: { effort: "medium" },
+          system: `Tu compares les prix d'un produit de beauté chez les revendeurs français en ligne.\n\n${UNTRUSTED_RULE}`,
           tools: [
             {
               type: "web_search_20260209",
@@ -136,18 +152,22 @@ Cherche sur plusieurs enseignes (parfumeries, parapharmacies, grandes surfaces, 
         const report = Report.safeParse(call.input);
         if (!report.success) return Response.json({ error: "Réponse illisible, réessayez." }, { status: 502 });
         const offers: PricePoint[] = report.data.offers
-          .filter((o) => o.price_eur > 0 && /^https?:\/\//.test(o.url))
-          .map((o) => ({
-            price: o.price_eur,
-            currency: "EUR",
-            date: new Date().toISOString().slice(0, 10),
-            store: o.store + (o.note ? ` · ${o.note}` : "") + (o.in_stock ? "" : " · rupture"),
-            source: "web" as const,
-            url: o.url,
-          }))
+          // Checked in code, whatever the model says: links only to the retailers searched, a sane price, short texts.
+          .filter((o) => o.price_eur > 0 && o.price_eur < 2000 && isAllowedUrl(o.url, PRICE_DOMAINS))
+          .map((o) => {
+            const note = cleanText(o.note, 80);
+            return {
+              price: o.price_eur,
+              currency: "EUR",
+              date: new Date().toISOString().slice(0, 10),
+              store: cleanText(o.store, 60) + (note ? ` · ${note}` : "") + (o.in_stock ? "" : " · rupture"),
+              source: "web" as const,
+              url: o.url,
+            };
+          })
           .sort((a, b) => a.price - b.price);
-        const result: LiveReport = { offers, summary: report.data.summary, checkedAt: new Date().toISOString() };
-        await kv.setJSON(cacheKey, result, offers.length ? CACHE_HIT_TTL : CACHE_MISS_TTL).catch((e) => console.error("[live-prices] cache write", e));
+        const result: LiveReport = { offers, summary: cleanText(report.data.summary, 300), checkedAt: new Date().toISOString() };
+        if (cacheKey) await kv.setJSON(cacheKey, result, offers.length ? CACHE_HIT_TTL : CACHE_MISS_TTL).catch((e) => console.error("[live-prices] cache write", e));
         return Response.json(result);
       }
 

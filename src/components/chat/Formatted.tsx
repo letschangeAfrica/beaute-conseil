@@ -1,8 +1,11 @@
 import { Fragment } from "react";
+import { isAllowedUrl } from "@/lib/untrusted";
 
 /*
  * Safe renderer for Belle's answers: **bold**, "- " bullets, "1. " numbered lists, paragraphs and
  * plain http(s) links. Everything becomes React elements; no HTML string is ever injected.
+ * Only links to the retailers Belle searches (and Open Beauty Facts) become clickable: a web page read
+ * during a search could try to slip a phishing link into an answer, so any other URL stays plain text.
  */
 
 const URL_RE = /(https?:\/\/[^\s)]+[^\s).,;:!?»"'])/g;
@@ -18,7 +21,7 @@ function inline(text: string, key: string) {
     return (
       <Fragment key={`${key}-${i}`}>
         {part.split(URL_RE).map((bit, j) =>
-          j % 2 ? (
+          j % 2 && isAllowedUrl(bit) ? (
             <a
               key={j}
               href={bit}

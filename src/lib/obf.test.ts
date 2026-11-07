@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
-const { getProduct } = await import("./obf");
+const { getProduct, paoMonths } = await import("./obf");
 
 const reply = (body: unknown, status: number) =>
   vi.stubGlobal("fetch", vi.fn(async () => new Response(typeof body === "string" ? body : JSON.stringify(body), { status })));
@@ -34,5 +34,24 @@ describe("getProduct: 'not in the database' is not 'database down'", () => {
     vi.stubGlobal("fetch", fetch);
     await expect(getProduct("12345")).resolves.toBeNull();
     expect(fetch).not.toHaveBeenCalled();
+  });
+});
+
+describe("paoMonths: the open-jar symbol (12M)", () => {
+  it("reads months from Open Beauty Facts tags", () => {
+    expect(paoMonths(["en:12-months"])).toBe(12);
+    expect(paoMonths(["en:6-months"])).toBe(6);
+    expect(paoMonths(["en:1-month"])).toBe(1);
+  });
+
+  it("ignores missing or unexpected values", () => {
+    expect(paoMonths(undefined)).toBeUndefined();
+    expect(paoMonths([])).toBeUndefined();
+    expect(paoMonths(["en:unknown", "en:0-months"])).toBeUndefined();
+  });
+
+  it("is passed through on the product", async () => {
+    reply({ status: 1, product: { product_name: "Crème", periods_after_opening_tags: ["en:12-months"] } }, 200);
+    await expect(getProduct("3337871320362")).resolves.toMatchObject({ pao: 12 });
   });
 });

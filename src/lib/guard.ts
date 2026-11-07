@@ -88,6 +88,9 @@ export async function guard(req: Request, feature: Feature): Promise<Response | 
       await countStat(feature, "blocked");
       return json("Belle a reçu beaucoup de demandes aujourd'hui. Cette fonction revient demain.", 503);
     }
+    // Evaluation runs (npm run eval:advisor) skip the per-visitor limits, never the daily budget. Only outside
+    // production, and only with the secret EVAL_TOKEN the runner also knows: in production this line is inert.
+    if (isEvalRequest(req)) return null;
     const { id, signedIn } = await identify(req);
     const l = LIMITS[feature];
     const i = signedIn ? 1 : 0;
@@ -171,3 +174,9 @@ export async function readStats(days: number, now = new Date()): Promise<DayStat
 
 /** Estimated spend so far today (the number the daily cap uses). */
 export const spentToday = () => kv.getNumber(spendKey());
+
+/** True only in development or test, with EVAL_TOKEN set and sent back in the x-belle-eval header. */
+function isEvalRequest(req: Request): boolean {
+  const token = process.env.EVAL_TOKEN;
+  return process.env.NODE_ENV !== "production" && !!token && token.length >= 16 && req.headers.get("x-belle-eval") === token;
+}

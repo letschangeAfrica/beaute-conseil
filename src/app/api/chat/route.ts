@@ -6,6 +6,7 @@ import { FALLBACK, MODEL, anthropic, profileSummary } from "@/lib/claude";
 import { guard, overBudget, recordUsage } from "@/lib/guard";
 import { PRICE_DOMAINS } from "@/lib/stores";
 import type { ChatEvent, Profile } from "@/lib/types";
+import { cleanText, fence, UNTRUSTED_RULE } from "@/lib/untrusted";
 import { CHAT_LIMITS } from "@/lib/utils";
 
 export const maxDuration = 300;
@@ -31,7 +32,9 @@ Règles :
 - Si elle demande un prix ou où acheter, utilise web_search sur les sites français et donne les prix en euros avec l'enseigne. Précise que les prix changent vite. N'invente jamais un prix.
 - Respecte strictement ses allergies et ingrédients à éviter.
 - Pour le teint, rappelle de tester la teinte sur la mâchoire à la lumière du jour.
-- Tu n'es pas médecin : pour une réaction, une irritation forte ou un problème de peau persistant, conseille un pharmacien ou un dermatologue.`;
+- Tu n'es pas médecin : pour une réaction, une irritation forte ou un problème de peau persistant, conseille un pharmacien ou un dermatologue.
+
+${UNTRUSTED_RULE}`;
 
 const searchTool: Anthropic.Beta.BetaTool = {
   name: "search_products",
@@ -61,15 +64,20 @@ async function runSearch(input: unknown, profile: Profile | null, emit: Emit) {
       type: "products",
       items: results.map(({ code, name, brand, image, score, verdict }) => ({ code, name, brand, image, score, verdict })),
     });
+    // Names and brands come from Open Beauty Facts, which anyone can edit: cleaned, capped and fenced as data.
+    // Scores and reasons are computed by Belle, but the reasons quote ingredient names, so they are cleaned too.
     const compact = results.map((r) => ({
       code: r.code,
-      nom: r.name,
-      marque: r.brand,
+      nom: cleanText(r.name, 120),
+      marque: cleanText(r.brand, 60),
       score: r.score,
       verdict: r.verdict,
-      raisons: r.reasons.slice(0, 4).map((x) => `${x.kind === "plus" ? "+" : x.kind === "minus" ? "-" : "·"} ${x.text}`),
+      raisons: r.reasons.slice(0, 4).map((x) => cleanText(`${x.kind === "plus" ? "+" : x.kind === "minus" ? "-" : "·"} ${x.text}`, 200)),
     }));
-    return { content: compact.length ? JSON.stringify(compact) : "Aucun produit trouvé avec des ingrédients renseignés.", isError: false };
+    return {
+      content: compact.length ? fence("open-beauty-facts", JSON.stringify(compact)) : "Aucun produit trouvé avec des ingrédients renseignés.",
+      isError: false,
+    };
   } catch {
     return { content: "La base produits ne répond pas pour le moment.", isError: true };
   }
