@@ -111,7 +111,7 @@ export function Spinner({ label }: { label?: string }) {
 }
 
 export function Skeleton({ className = "" }: { className?: string }) {
-  return <div className={`animate-pulse rounded-xl bg-caramel/20 ${className}`} />;
+  return <div className={`animate-pulse rounded-xl bg-caramel/20 motion-reduce:animate-none ${className}`} />;
 }
 
 export function CardSkeleton() {
