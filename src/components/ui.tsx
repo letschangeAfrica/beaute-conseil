@@ -2,7 +2,11 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, Ban, CircleAlert, Info, LoaderCircle, Sparkles, TriangleAlert } from "lucide-react";
+import { useEffect, useLayoutEffect, useRef } from "react";
 import type { Verdict } from "@/lib/types";
+import { CountUp } from "./motion/CountUp";
+
+const useIsoLayoutEffect = typeof window === "undefined" ? useEffect : useLayoutEffect;
 
 /* ---------- Brand ---------------------------------------------------- */
 
@@ -111,7 +115,7 @@ export function Spinner({ label }: { label?: string }) {
 }
 
 export function Skeleton({ className = "" }: { className?: string }) {
-  return <div className={`animate-pulse rounded-xl bg-caramel/20 motion-reduce:animate-none ${className}`} />;
+  return <div className={`skeleton-shimmer rounded-xl bg-caramel/20 ${className}`} />;
 }
 
 export function CardSkeleton() {
@@ -138,18 +142,45 @@ export const VERDICT: Record<Verdict, { label: string; color: string; soft: stri
   inconnu: { label: "Infos insuffisantes", color: "var(--color-muted)", soft: "var(--color-muted-soft)" },
 };
 
-export function ScoreRing({ score, verdict, size = 60 }: { score: number; verdict: Verdict; size?: number }) {
+/**
+ * Score ring. The first time it is seen, the arc draws itself and the number counts up (one-shot,
+ * ≈800 ms). The accessible label is always the final score; reduced motion shows it at once.
+ */
+export function ScoreRing({ score, verdict, size = 60, animate = true }: { score: number; verdict: Verdict; size?: number; animate?: boolean }) {
   const v = VERDICT[verdict];
   const stroke = size > 80 ? 7 : 5;
   const r = (size - stroke) / 2;
   const c = 2 * Math.PI * r;
   const pct = verdict === "inconnu" ? 0 : score / 100;
+  const arc = useRef<SVGCircleElement>(null);
+  const box = useRef<HTMLDivElement>(null);
+
+  // Before paint: hide the arc, then draw it when the ring scrolls into view.
+  useIsoLayoutEffect(() => {
+    const el = arc.current;
+    const host = box.current;
+    if (!animate || !el || !host || pct === 0 || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const length = c * pct;
+    el.style.strokeDashoffset = String(length);
+    const io = new IntersectionObserver(([e]) => {
+      if (!e.isIntersecting) return;
+      io.disconnect();
+      el.animate([{ strokeDashoffset: length }, { strokeDashoffset: 0 }], { duration: 800, easing: "cubic-bezier(0.22, 1, 0.36, 1)", fill: "forwards" }).finished.then(
+        () => (el.style.strokeDashoffset = "0"),
+        () => {},
+      );
+    });
+    io.observe(host);
+    return () => io.disconnect();
+  }, [animate, pct, c]);
+
   return (
-    <div className="relative shrink-0" style={{ width: size, height: size }} aria-label={`Score ${score} sur 100 : ${v.label}`} role="img">
-      <svg width={size} height={size} className="-rotate-90">
+    <div ref={box} className="relative shrink-0" style={{ width: size, height: size }} aria-label={`Score ${score} sur 100 : ${v.label}`} role="img">
+      <svg width={size} height={size} className="-rotate-90" aria-hidden="true">
         <circle cx={size / 2} cy={size / 2} r={r} fill={v.soft} stroke={v.soft} strokeWidth={stroke} />
         {pct > 0 && (
           <circle
+            ref={arc}
             cx={size / 2}
             cy={size / 2}
             r={r}
@@ -161,8 +192,8 @@ export function ScoreRing({ score, verdict, size = 60 }: { score: number; verdic
           />
         )}
       </svg>
-      <span className="absolute inset-0 grid place-items-center font-bold tabular-nums" style={{ color: v.color, fontSize: size * 0.32 }}>
-        {verdict === "inconnu" ? "–" : score}
+      <span aria-hidden="true" className="absolute inset-0 grid place-items-center font-bold tabular-nums" style={{ color: v.color, fontSize: size * 0.32 }}>
+        {verdict === "inconnu" ? "–" : <CountUp value={score} animate={animate} duration={800} />}
       </span>
     </div>
   );

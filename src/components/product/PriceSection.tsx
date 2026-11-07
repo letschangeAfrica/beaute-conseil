@@ -125,7 +125,13 @@ export function PriceSection({ name, brand, code, quantity, city, prices }: { na
       {/* Best price, then the others: never a price we don't have. */}
       {best && (
         <div>
-          <Wrap p={best} className="block rounded-tile bg-paper p-4 ring-1 ring-line">
+          <Wrap p={best} className="relative block overflow-hidden rounded-tile bg-paper p-4 ring-1 ring-line">
+            {/* A light sweep across the best price, replayed when the best offer changes. */}
+            <span
+              key={`${best.store}-${best.price}`}
+              aria-hidden="true"
+              className="pointer-events-none absolute inset-y-0 left-0 w-1/3 -translate-x-[120%] bg-gradient-to-r from-transparent via-white/80 to-transparent motion-safe:animate-sweep"
+            />
             {all.length > 1 && (
               <p className="mb-2 inline-flex items-center gap-1.5 rounded-full bg-good-soft px-2.5 py-1 text-[0.7rem] font-bold uppercase tracking-[0.12em] text-good">
                 <Trophy size={12} aria-hidden="true" /> Meilleur prix
@@ -144,7 +150,7 @@ export function PriceSection({ name, brand, code, quantity, city, prices }: { na
           {rest.length > 0 && (
             <ul className="mt-2 divide-y divide-line">
               {rest.map((pp, i) => (
-                <li key={`${pp.store}-${i}`}>
+                <li key={`${pp.store}-${pp.price}-${i}`} className="motion-safe:animate-rise" style={{ animationDelay: `${i * 60}ms` }}>
                   <Wrap p={pp} className="flex min-h-14 items-center gap-3 rounded-tile px-2 py-2.5">
                     <SourceIcon p={pp} className="h-9 w-9" />
                     <div className="min-w-0 flex-1">

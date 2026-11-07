@@ -213,11 +213,11 @@ export function ToneGrid({
           >
             <span
               aria-hidden="true"
-              className={`swatch relative grid h-14 w-14 place-items-center transition-transform duration-200 motion-safe:group-hover:scale-105 ${on ? "ring-2 ring-brand ring-offset-2 ring-offset-white" : ""}`}
+              className={`swatch relative grid h-14 w-14 place-items-center transition-transform duration-(--duration-base) ease-(--ease-spring) motion-reduce:transition-none ${on ? "scale-110 ring-2 ring-brand ring-offset-2 ring-offset-white" : "motion-safe:group-hover:scale-105"}`}
               style={{ background: color }}
             >
               {on && (
-                <span className="grid h-6 w-6 place-items-center rounded-full bg-white text-brand shadow-soft">
+                <span className="grid h-6 w-6 place-items-center rounded-full bg-white text-brand shadow-soft motion-safe:animate-pop">
                   <Check size={14} strokeWidth={3} />
                 </span>
               )}

@@ -63,12 +63,131 @@
   --animate-rise: rise 0.7s var(--ease-out-soft) both;
   --animate-scan: scan 2.4s ease-in-out infinite alternate;
   --animate-pop: pop 0.32s var(--ease-out-soft) both;
-  @keyframes scan {
+
+  /* ---- Motion system (see docs/motion.md) ---- */
+  --animate-fade-in: fade-in var(--duration-base) var(--ease-out-soft) both;
+  --animate-scale-in: scale-in var(--duration-slow) var(--ease-out-soft) both;
+  --animate-float: float 7s ease-in-out infinite alternate;
+  --animate-marquee: marquee var(--marquee-duration, 40s) linear infinite;
+  --animate-shimmer: shimmer 1.6s ease-in-out infinite;
+  --animate-heart-pop: heart-pop 0.45s var(--ease-spring) both;
+  --animate-glow-pulse: glow-pulse 1.6s var(--ease-out-soft) 0.3s 1 both;
+  --animate-burst: burst 0.6s var(--ease-out-soft) both;
+  --animate-sweep: sweep 1.2s var(--ease-out-soft) 0.2s 1 both;
+  --animate-aurora: aurora 26s ease-in-out infinite alternate;
+  --animate-ring-out: ring-out 0.55s var(--ease-out-soft) both;
+  @keyframes ring-out {
     from {
-      top: 8%;
+      opacity: 0.9;
+      transform: scale(1);
     }
     to {
-      top: 92%;
+      opacity: 0;
+      transform: scale(1.9);
+    }
+  }
+  @keyframes fade-in {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+  @keyframes scale-in {
+    from {
+      opacity: 0;
+      transform: scale(0.94);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+  @keyframes float {
+    from {
+      transform: translateY(-5px);
+    }
+    to {
+      transform: translateY(5px);
+    }
+  }
+  @keyframes marquee {
+    from {
+      transform: translateX(0);
+    }
+    to {
+      transform: translateX(-50%);
+    }
+  }
+  @keyframes shimmer {
+    from {
+      transform: translateX(-100%);
+    }
+    to {
+      transform: translateX(100%);
+    }
+  }
+  @keyframes heart-pop {
+    0% {
+      transform: scale(1);
+    }
+    35% {
+      transform: scale(1.35);
+    }
+    100% {
+      transform: scale(1);
+    }
+  }
+  /* One attention pulse: animates the opacity of a pre-drawn glow (no box-shadow animation). */
+  @keyframes glow-pulse {
+    0% {
+      opacity: 0;
+    }
+    35% {
+      opacity: 1;
+    }
+    100% {
+      opacity: 0;
+    }
+  }
+  /* Particles: each one flies along its own --bx/--by vector and fades. */
+  @keyframes burst {
+    from {
+      opacity: 1;
+      transform: translate(0, 0) scale(1);
+    }
+    to {
+      opacity: 0;
+      transform: translate(var(--bx, 0), var(--by, -24px)) scale(0.4);
+    }
+  }
+  @keyframes sweep {
+    from {
+      transform: translateX(-120%) skewX(-18deg);
+    }
+    to {
+      transform: translateX(260%) skewX(-18deg);
+    }
+  }
+  @keyframes aurora {
+    0% {
+      transform: translate3d(0, 0, 0) scale(1);
+    }
+    50% {
+      transform: translate3d(var(--ax, 8%), var(--ay, -6%), 0) scale(1.12);
+    }
+    100% {
+      transform: translate3d(calc(var(--ax, 8%) * -0.6), calc(var(--ay, -6%) * -0.8), 0) scale(0.94);
+    }
+  }
+  /* Scanner line: transform only (the line sits at the top of an 8rem frame). */
+  @keyframes scan {
+    from {
+      transform: translateY(0.6rem);
+    }
+    to {
+      transform: translateY(7.3rem);
     }
   }
   @keyframes pop {
@@ -90,6 +209,19 @@
       opacity: 1;
       transform: none;
     }
+  }
+}
+
+/* Motion timing tokens. --ease-spring uses linear() where supported (an overshooting spring), else a back-out curve. */
+:root {
+  --duration-fast: 150ms;
+  --duration-base: 280ms;
+  --duration-slow: 600ms;
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+@supports (transition-timing-function: linear(0, 1)) {
+  :root {
+    --ease-spring: linear(0, 0.009, 0.035 2.1%, 0.141 4.4%, 0.723 12.9%, 0.938 16.7%, 1.017 19.4%, 1.067, 1.099 24.3%, 1.108 26%, 1.1 28.2%, 1.071 31%, 0.993 38.9%, 0.982 42.2%, 0.98 45.7%, 0.997 59.9%, 1.002 70.1%, 1);
   }
 }
 
@@ -134,7 +266,8 @@ body {
  * Unlayered CSS, so it wins over the max-w-2xl utility. Browsers without :has() keep the narrow layout.
  */
 @media (min-width: 64rem) {
-  main:has(> [data-layout="wide"]) {
+  main:has(> [data-layout="wide"]),
+  main:has(> .page-transition > [data-layout="wide"]) {
     max-width: 78rem;
     padding-inline: 2.5rem;
   }
@@ -162,7 +295,7 @@ body {
   @apply inline-flex min-h-12 items-center justify-center gap-2 rounded-full px-6 font-semibold transition duration-150 select-none active:scale-[0.98] disabled:pointer-events-none disabled:opacity-55 motion-reduce:transition-none motion-reduce:active:scale-100;
 }
 @utility btn-primary {
-  @apply btn bg-brand text-white shadow-soft hover:bg-brand-deep;
+  @apply btn bg-brand text-white shadow-soft hover:bg-brand-deep hover:shadow-lift active:shadow-none;
 }
 @utility btn-secondary {
   @apply btn bg-white text-brand ring-1 ring-brand/25 hover:bg-paper hover:ring-brand/55;
@@ -292,5 +425,112 @@ html[data-keyboard="on"] .chat-composer {
   }
   main {
     padding-bottom: 0 !important;
+  }
+}
+
+/* ---------- Motion layer (docs/motion.md) ---------- */
+
+/* Page transition (src/app/template.tsx): opacity only, so fixed bars inside pages never jump. */
+@media (prefers-reduced-motion: no-preference) {
+  .page-transition {
+    animation: fade-in 250ms var(--ease-out-soft) both;
+  }
+}
+
+/*
+ * <Reveal>: scroll-driven where supported (no JavaScript, nothing hidden before scripts run),
+ * IntersectionObserver fallback elsewhere (data-reveal="pending" → "shown"). Never under reduced motion.
+ */
+@media (prefers-reduced-motion: no-preference) {
+  @supports (animation-timeline: view()) {
+    .reveal,
+    .reveal-stagger > * {
+      animation: rise linear both;
+      animation-timeline: view();
+      animation-range: entry calc(4% + var(--i, 0) * 5%) cover calc(22% + var(--i, 0) * 5%);
+    }
+  }
+  .reveal[data-reveal="pending"],
+  .reveal-stagger[data-reveal="pending"] > * {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  .reveal[data-reveal="shown"],
+  .reveal-stagger[data-reveal="shown"] > * {
+    transition:
+      opacity var(--duration-slow) var(--ease-out-soft),
+      transform var(--duration-slow) var(--ease-out-soft);
+    transition-delay: calc(var(--i, 0) * 60ms);
+  }
+}
+
+/* <Marquee>: pauses on hover, focus, its pause button, off-screen and hidden tabs. */
+.marquee-track {
+  animation: var(--animate-marquee);
+}
+.marquee:hover .marquee-track,
+.marquee:focus-within .marquee-track,
+.marquee[data-paused="true"] .marquee-track {
+  animation-play-state: paused;
+}
+@media (prefers-reduced-motion: reduce) {
+  .marquee-track {
+    animation: none;
+  }
+}
+
+/* Continuous decorations obey the same pause switch as their container. */
+[data-paused="true"] .pausable,
+[data-paused="true"].pausable {
+  animation-play-state: paused !important;
+}
+
+/* Skeleton shimmer: a warm light band sweeping across (transform only). */
+.skeleton-shimmer {
+  position: relative;
+  overflow: hidden;
+}
+.skeleton-shimmer::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, rgb(255 253 248 / 0.65), transparent);
+  transform: translateX(-100%);
+  animation: var(--animate-shimmer);
+}
+@media (prefers-reduced-motion: reduce) {
+  .skeleton-shimmer::after {
+    animation: none;
+    opacity: 0;
+  }
+}
+
+/* Film grain for the hero backdrop: inline SVG noise (allowed by the CSP as a data: image). */
+.grain {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.23 0 0 0 0 0.11 0 0 0 0 0.08 0 0 0 0.55 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+/* <CountUp>: an animated integer printed by a CSS counter (no DOM text updates, no layout shift). */
+@property --n {
+  syntax: "<integer>";
+  inherits: false;
+  initial-value: 0;
+}
+/* The counter is set on the element itself: --n does not inherit, so ::after could not read it. */
+.count-up {
+  counter-reset: n var(--n);
+}
+.count-up::after {
+  content: counter(n);
+}
+.count-up[data-state="pending"] {
+  --n: 0 !important;
+}
+.count-up[data-state="run"] {
+  animation: count-up var(--count-duration, 700ms) cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+@keyframes count-up {
+  from {
+    --n: 0;
   }
 }

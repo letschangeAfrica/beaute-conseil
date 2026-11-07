@@ -13,7 +13,9 @@ import { topReason } from "@/lib/utils";
  */
 export function AllergyAlert({ hits }: { hits: string[] }) {
   return (
-    <div role="alert" className="flex gap-3.5 rounded-card bg-danger p-4 text-white shadow-lift sm:p-5">
+    <div role="alert" className="relative flex gap-3.5 rounded-card bg-danger p-4 text-white shadow-lift sm:p-5">
+      {/* One attention pulse when it appears (opacity of a pre-drawn glow, never looping). */}
+      <span aria-hidden="true" className="pointer-events-none absolute -inset-1 rounded-[calc(var(--radius-card)+4px)] opacity-0 shadow-[0_0_0_4px_rgb(180_35_24/0.25),0_0_28px_6px_rgb(180_35_24/0.35)] motion-safe:animate-glow-pulse" />
       <ShieldAlert size={26} aria-hidden="true" className="mt-0.5 shrink-0" />
       <div className="min-w-0">
         <p className="font-display text-[1.25rem] leading-tight">Attention : vous y êtes allergique</p>
@@ -25,23 +27,59 @@ export function AllergyAlert({ hits }: { hits: string[] }) {
   );
 }
 
+/** Six particles around the heart, each flying along its own vector (CSS only). */
+const BURST = [
+  [0, -22],
+  [19, -11],
+  [19, 11],
+  [0, 22],
+  [-19, 11],
+  [-19, -11],
+];
+
+/** The heart: pops and bursts when it becomes a favourite (plus a 10 ms tap on phones that vibrate). */
+function HeartMark({ fav, size, pulse }: { fav: boolean; size: number; pulse: number }) {
+  return (
+    <span className="relative inline-grid place-items-center" aria-hidden="true">
+      <Heart key={pulse} size={size} fill={fav ? "currentColor" : "none"} className={pulse ? "motion-safe:animate-heart-pop" : ""} />
+      {pulse > 0 &&
+        fav &&
+        BURST.map(([x, y], i) => (
+          <span
+            key={`${pulse}-${i}`}
+            className="pointer-events-none absolute h-1.5 w-1.5 rounded-full bg-brand opacity-0 motion-safe:animate-burst"
+            style={{ ["--bx" as string]: `${x}px`, ["--by" as string]: `${y}px`, animationDelay: `${i * 15}ms` }}
+          />
+        ))}
+    </span>
+  );
+}
+
 /** Favourite toggle: same payload and aria-pressed as before; `compact` is the icon-only version. */
 export function FavButton({ fav, onToggle, compact = false }: { fav: boolean; onToggle: () => void; compact?: boolean }) {
+  const [pulse, setPulse] = useState(0);
+  const click = () => {
+    if (!fav) {
+      setPulse((n) => n + 1);
+      navigator.vibrate?.(10);
+    }
+    onToggle();
+  };
   if (compact)
     return (
       <button
         type="button"
-        onClick={onToggle}
+        onClick={click}
         aria-pressed={fav}
         aria-label="Favori"
         className={`grid h-11 w-11 shrink-0 place-items-center rounded-full ring-1 transition-colors ${fav ? "bg-brand-soft text-brand ring-brand/30" : "bg-white text-ink/75 ring-line hover:text-brand"}`}
       >
-        <Heart size={19} fill={fav ? "currentColor" : "none"} aria-hidden="true" />
+        <HeartMark fav={fav} size={19} pulse={pulse} />
       </button>
     );
   return (
-    <button type="button" onClick={onToggle} aria-pressed={fav} className={`btn flex-1 ${fav ? "bg-brand-soft text-brand ring-1 ring-brand/30" : "btn-secondary"}`}>
-      <Heart size={18} fill={fav ? "currentColor" : "none"} aria-hidden="true" />
+    <button type="button" onClick={click} aria-pressed={fav} className={`btn flex-1 ${fav ? "bg-brand-soft text-brand ring-1 ring-brand/30" : "btn-secondary"}`}>
+      <HeartMark fav={fav} size={18} pulse={pulse} />
       {fav ? "Dans mes favoris" : "Ajouter à mes favoris"}
     </button>
   );
@@ -75,7 +113,9 @@ export function ProductHero({ p, personal, fav, onToggleFav }: { p: ScoredProduc
     <section aria-labelledby="product-title" className="card overflow-hidden">
       <div className="flex gap-4 p-4 sm:p-5 lg:flex-col lg:gap-5 lg:p-6">
         <div className="w-[6.5rem] shrink-0 sm:w-32 lg:mx-auto lg:w-full lg:max-w-[18rem]">
-          <ProductImage src={p.image} alt={p.name} fluid />
+          <div className="motion-safe:animate-scale-in">
+            <ProductImage src={p.image} alt={p.name} fluid />
+          </div>
         </div>
         <div className="min-w-0 flex-1 self-center lg:self-auto">
           {p.brand && <p className="eyebrow break-words">{p.brand}</p>}

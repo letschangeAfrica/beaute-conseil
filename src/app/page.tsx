@@ -3,24 +3,19 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useSession } from "next-auth/react";
-import {
-  ArrowRight,
-  ChevronLeft,
-  ChevronRight,
-  MessageCircleHeart,
-  ScanBarcode,
-  Sparkles,
-  UserRoundCheck,
-} from "lucide-react";
+import { ArrowRight, ChevronLeft, ChevronRight, MessageCircleHeart, ScanBarcode, Sparkles, UserRoundCheck } from "lucide-react";
 import { Avatar } from "@/components/AccountCard";
 import { LegalLinks } from "@/components/LegalLinks";
 import { ProductImage } from "@/components/ProductCard";
 import { CategoryGrid } from "@/components/CategoryGrid";
+import { Showcase } from "@/components/home/Showcase";
+import { HeroBackdrop } from "@/components/motion/HeroBackdrop";
+import { Reveal } from "@/components/motion/Reveal";
+import { Tilt } from "@/components/motion/Tilt";
 import { SearchBar } from "@/components/SearchBar";
 import { Logo, SectionTitle } from "@/components/ui";
 import { type Favorite, useFavorites, useOnboarded, useProfile } from "@/lib/useLocal";
 import { searchHref } from "@/lib/utils";
-
 
 const STEPS = [
   { title: "Décrivez votre peau", text: "Type de peau, teint, préoccupations, allergies et budget : deux minutes, une seule fois." },
@@ -43,12 +38,13 @@ export default function Home() {
 
   return (
     <div data-layout="wide" className="flex flex-col gap-section">
-      {/* ---------- Top bar ---------- */}
-      <div className="flex flex-col gap-10 sm:gap-12 lg:gap-14">
+      {/* ---------- Top bar + hero, over the living backdrop (full bleed, decorative) ---------- */}
+      <div className="relative isolate -mx-4 -mt-6 flex flex-col gap-10 px-4 pb-10 pt-6 sm:-mx-6 sm:gap-12 sm:px-6 lg:-mx-10 lg:gap-14 lg:px-10 lg:pb-14">
+        <HeroBackdrop />
         <header className="flex h-12 items-center justify-between gap-3">
           <Logo />
           {/* Fixed height in every session state: nothing shifts when it resolves. */}
-          <div className="flex h-12 min-w-12 items-center justify-end">
+          <div className="flex h-12 w-[9rem] shrink-0 items-center justify-end">
             {status === "authenticated" ? (
               <Link href="/profil" aria-label="Mon compte" className="rounded-full p-1">
                 <Avatar src={session.user?.image} name={session.user?.name} size={40} />
@@ -73,80 +69,78 @@ export default function Home() {
               <span className="italic text-brand">que cherchez-vous ?</span>
             </h1>
             <p className="mt-4 max-w-[34rem] text-[1.05rem] leading-relaxed text-ink/75 [animation-delay:60ms] motion-safe:animate-rise sm:text-lg">
-              Belle vous dit si un produit convient à <em className="font-display not-italic text-ink">votre</em> peau, vous alerte sur vos
-              allergies et trouve le meilleur prix.
+              Belle vous dit si un produit convient à <em className="font-display not-italic text-ink">votre</em> peau, vous alerte sur vos allergies et trouve le
+              meilleur prix.
             </p>
 
-            <SearchBar
-              value={q}
-              onChange={setQ}
-              onSearch={(query) => router.push(searchHref(query))}
-              className="mt-7 [animation-delay:120ms] motion-safe:animate-rise"
-            />
+            <SearchBar value={q} onChange={setQ} onSearch={(query) => router.push(searchHref(query))} className="mt-7 [animation-delay:120ms] motion-safe:animate-rise" />
 
             <ProfileSlot ready={ready} hasProfile={!!profile} />
           </div>
 
           {/* Shortcuts: two tiles under the search on phones, a stacked column beside it on desktop. */}
           <div className="grid min-w-0 grid-cols-2 gap-3 [animation-delay:180ms] motion-safe:animate-rise sm:gap-4 lg:col-span-5 lg:grid-cols-1">
-            <Link
-              href="/scanner"
-              className="group relative flex min-h-[9.5rem] flex-col justify-between gap-4 overflow-hidden rounded-card bg-brand p-4 text-cream shadow-lift transition duration-200 hover:bg-brand-deep focus-visible:outline-gold motion-safe:hover:-translate-y-0.5 sm:p-5 lg:min-h-[11rem] lg:rounded-panel lg:p-7"
-            >
-              <span className="grid h-11 w-11 place-items-center rounded-full bg-cream/12 ring-1 ring-cream/25 lg:h-12 lg:w-12">
-                <ScanBarcode size={22} aria-hidden="true" />
-              </span>
-              <span>
-                <span className="eyebrow block text-gold">En magasin</span>
-                <span className="mt-1.5 flex items-center justify-between gap-2 font-display text-[1.2rem] leading-tight lg:text-[1.6rem]">
-                  Scanner un produit
-                  <ArrowRight size={20} aria-hidden="true" className="hidden shrink-0 transition-transform group-hover:translate-x-0.5 sm:block" />
+            <Tilt className="h-full">
+              <Link
+                href="/scanner"
+                className="group relative flex h-full min-h-[9.5rem] flex-col justify-between gap-4 overflow-hidden rounded-card bg-brand p-4 text-cream shadow-lift transition duration-200 hover:bg-brand-deep focus-visible:outline-gold motion-safe:hover:-translate-y-0.5 sm:p-5 lg:min-h-[11rem] lg:rounded-panel lg:p-7"
+              >
+                <span className="grid h-11 w-11 place-items-center rounded-full bg-cream/12 ring-1 ring-cream/25 lg:h-12 lg:w-12">
+                  <ScanBarcode size={22} aria-hidden="true" />
                 </span>
-                <span className="mt-1 hidden text-sm leading-relaxed text-cream/85 sm:block">
-                  Le code-barres suffit : votre score, vos alertes allergies et les prix ailleurs.
+                <span>
+                  <span className="eyebrow block text-gold">En magasin</span>
+                  <span className="mt-1.5 flex items-center justify-between gap-2 font-display text-[1.2rem] leading-tight lg:text-[1.6rem]">
+                    Scanner un produit
+                    <ArrowRight size={20} aria-hidden="true" className="hidden shrink-0 transition-transform group-hover:translate-x-0.5 sm:block" />
+                  </span>
+                  <span className="mt-1 hidden text-sm leading-relaxed text-cream/85 sm:block">
+                    Le code-barres suffit : votre score, vos alertes allergies et les prix ailleurs.
+                  </span>
                 </span>
-              </span>
-            </Link>
-            <Link
-              href="/conseillere"
-              className="card-interactive group flex min-h-[9.5rem] flex-col justify-between gap-4 p-4 sm:p-5 lg:min-h-[11rem] lg:rounded-panel lg:p-7"
-            >
-              <span className="grid h-11 w-11 place-items-center rounded-full bg-brand-soft text-brand lg:h-12 lg:w-12">
-                <MessageCircleHeart size={22} aria-hidden="true" />
-              </span>
-              <span>
-                <span className="eyebrow block">Conseils</span>
-                <span className="mt-1.5 flex items-center justify-between gap-2 font-display text-[1.2rem] leading-tight text-ink lg:text-[1.6rem]">
-                  Demander à Belle
-                  <ArrowRight size={20} aria-hidden="true" className="hidden shrink-0 text-brand transition-transform group-hover:translate-x-0.5 sm:block" />
+              </Link>
+            </Tilt>
+            <Tilt className="h-full">
+              <Link
+                href="/conseillere"
+                className="card-interactive group flex h-full min-h-[9.5rem] flex-col justify-between gap-4 p-4 sm:p-5 lg:min-h-[11rem] lg:rounded-panel lg:p-7"
+              >
+                <span className="grid h-11 w-11 place-items-center rounded-full bg-brand-soft text-brand lg:h-12 lg:w-12">
+                  <MessageCircleHeart size={22} aria-hidden="true" />
                 </span>
-                <span className="mt-1 hidden text-sm leading-relaxed text-ink/70 sm:block">
-                  Posez vos questions avec vos mots : Belle répond selon votre profil.
+                <span>
+                  <span className="eyebrow block">Conseils</span>
+                  <span className="mt-1.5 flex items-center justify-between gap-2 font-display text-[1.2rem] leading-tight text-ink lg:text-[1.6rem]">
+                    Demander à Belle
+                    <ArrowRight size={20} aria-hidden="true" className="hidden shrink-0 text-brand transition-transform group-hover:translate-x-0.5 sm:block" />
+                  </span>
+                  <span className="mt-1 hidden text-sm leading-relaxed text-ink/70 sm:block">Posez vos questions avec vos mots : Belle répond selon votre profil.</span>
                 </span>
-              </span>
-            </Link>
+              </Link>
+            </Tilt>
           </div>
         </section>
       </div>
 
       {/* ---------- Categories ---------- */}
-      <section aria-labelledby="cat-title" className="grid gap-6 lg:grid-cols-12 lg:gap-12">
+      <Reveal as="section" aria-labelledby="cat-title" className="grid gap-6 lg:grid-cols-12 lg:gap-12">
         <div className="min-w-0 lg:col-span-4">
           <SectionTitle id="cat-title" eyebrow="Parcourir" display>
             Par catégorie
           </SectionTitle>
-          <p className="-mt-3 hidden max-w-xs leading-relaxed text-ink/70 lg:block">
-            Chaque résultat est noté pour votre peau, du meilleur au moins adapté.
-          </p>
+          <p className="-mt-3 hidden max-w-xs leading-relaxed text-ink/70 lg:block">Chaque résultat est noté pour votre peau, du meilleur au moins adapté.</p>
         </div>
         <CategoryGrid className="lg:col-span-8" stackAtLg />
-      </section>
+      </Reveal>
+
+      {/* ---------- Showcase: real products, moving ---------- */}
+      <Showcase profile={profile} ready={ready} favs={favs} />
 
       {/* ---------- Favourites ---------- */}
       {favs.length > 0 && <Favorites favs={favs} />}
 
       {/* ---------- How it works ---------- */}
-      <section aria-labelledby="how-title" className="border-t border-line pt-section lg:pt-[calc(var(--spacing-section)*0.8)]">
+      <Reveal as="section" aria-labelledby="how-title" className="border-t border-line pt-section lg:pt-[calc(var(--spacing-section)*0.8)]">
         <SectionTitle id="how-title" eyebrow="Comment ça marche" display>
           Trois étapes, <span className="italic text-brand">et vous savez.</span>
         </SectionTitle>
@@ -163,10 +157,10 @@ export default function Home() {
             </li>
           ))}
         </ol>
-      </section>
+      </Reveal>
 
       {/* ---------- Independence ---------- */}
-      <section aria-labelledby="indep-title" className="rounded-panel bg-brand px-6 py-10 text-cream sm:px-10 sm:py-12 lg:px-14 lg:py-16">
+      <Reveal as="section" aria-labelledby="indep-title" className="rounded-panel bg-brand px-6 py-10 text-cream sm:px-10 sm:py-12 lg:px-14 lg:py-16">
         <div className="grid gap-8 lg:gap-12">
           <div className="max-w-xl">
             <p className="eyebrow text-gold">Notre engagement</p>
@@ -177,7 +171,9 @@ export default function Home() {
           <dl className="grid gap-6 sm:grid-cols-3 sm:gap-8 lg:gap-12">
             <div className="border-t border-cream/25 pt-4">
               <dt className="font-semibold">Aucune marque ne nous paie</dt>
-              <dd className="mt-1.5 text-[0.95rem] leading-relaxed text-cream/85">Belle n&apos;est payée par aucune marque. Personne ne peut acheter une meilleure note.</dd>
+              <dd className="mt-1.5 text-[0.95rem] leading-relaxed text-cream/85">
+                Belle n&apos;est payée par aucune marque. Personne ne peut acheter une meilleure note.
+              </dd>
             </div>
             <div className="border-t border-cream/25 pt-4">
               <dt className="font-semibold">Des données ouvertes</dt>
@@ -196,7 +192,7 @@ export default function Home() {
             </div>
           </dl>
         </div>
-      </section>
+      </Reveal>
 
       <LegalLinks className="-mt-[calc(var(--spacing-section)*0.5)]" />
     </div>
@@ -208,7 +204,7 @@ export default function Home() {
  * The slot keeps the same height while the profile loads, so the page never jumps.
  */
 function ProfileSlot({ ready, hasProfile }: { ready: boolean; hasProfile: boolean }) {
-  const base = "mt-4 flex min-h-[5.75rem] items-center sm:min-h-[4.5rem] gap-3.5 rounded-card px-4 py-3";
+  const base = "mt-4 flex min-h-[6.5rem] items-center sm:min-h-[4.5rem] gap-3.5 rounded-card px-4 py-3";
   if (!ready) return <div aria-hidden="true" className={`${base} bg-line/40`} />;
   if (!hasProfile) {
     return (

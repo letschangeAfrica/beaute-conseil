@@ -167,7 +167,7 @@ export default function BienvenuePage() {
           >
             {STEPS.map((s, i) => (
               <span key={s} className="h-1.5 flex-1 overflow-hidden rounded-full bg-ink/12">
-                <span className={`block h-full rounded-full bg-brand transition-[width] duration-500 ease-out-soft motion-reduce:transition-none ${i <= step ? "w-full" : "w-0"}`} />
+                <span className={`block h-full w-full origin-left rounded-full bg-brand transition-transform duration-(--duration-slow) ease-(--ease-out-soft) motion-reduce:transition-none ${i <= step ? "scale-x-100" : "scale-x-0"}`} />
               </span>
             ))}
           </div>

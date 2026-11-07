@@ -130,8 +130,12 @@ export function BelleMessage({ m, streaming, onRetry }: { m: Msg; streaming: boo
           aria-label="Produits proposés"
           className="-mx-4 flex snap-x snap-mandatory scroll-px-4 gap-2.5 overflow-x-auto px-4 pb-2 [scrollbar-width:thin] sm:mx-0 sm:scroll-px-0 sm:pl-11 sm:pr-0"
         >
-          {products.map((p) => (
-            <li key={p.code} className={`shrink-0 snap-start ${products.length === 1 ? "w-full" : "w-[82%] max-w-[21rem] md:w-56"}`}>
+          {products.map((p, i) => (
+            <li
+              key={p.code}
+              className={`shrink-0 snap-start motion-safe:animate-rise ${products.length === 1 ? "w-full" : "w-[82%] max-w-[21rem] md:w-56"}`}
+              style={{ animationDelay: `${Math.min(i, 6) * 70}ms` }}
+            >
               <ProductCard p={p} variant={products.length === 1 ? "row" : "tile"} />
             </li>
           ))}

@@ -19,6 +19,18 @@ interface RecentScan {
   at: number;
 }
 
+/** Spark vectors for the success burst (px). */
+const SPARKS = [
+  [0, -58],
+  [41, -41],
+  [58, 0],
+  [41, 41],
+  [0, 58],
+  [-41, 41],
+  [-58, 0],
+  [-41, -41],
+];
+
 /** How long the "code detected" confirmation stays before the product page opens. */
 const CONFIRM_MS = 350;
 
@@ -217,7 +229,7 @@ export default function ScannerPage() {
                   <Corner className="right-0 top-0 rounded-tr-tile border-r-4 border-t-4" />
                   <Corner className="bottom-0 left-0 rounded-bl-tile border-b-4 border-l-4" />
                   <Corner className="bottom-0 right-0 rounded-br-tile border-b-4 border-r-4" />
-                  <span aria-hidden="true" className="absolute inset-x-3 top-1/2 h-0.5 rounded-full bg-gold shadow-[0_0_12px_2px_rgb(249_214_137/0.7)] motion-safe:animate-scan" />
+                  <span aria-hidden="true" className="absolute inset-x-3 top-0 h-0.5 translate-y-[3.9rem] rounded-full bg-gold shadow-[0_0_12px_2px_rgb(249_214_137/0.7)] motion-safe:animate-scan" />
                 </div>
                 <p className="scrim absolute left-1/2 top-4 -translate-x-1/2 whitespace-nowrap rounded-full px-4 py-2 text-sm font-semibold">
                   Placez le code-barres dans le cadre
@@ -228,8 +240,19 @@ export default function ScannerPage() {
             {/* Detected: a brief check and the code, then the product page. */}
             {phase === "detected" && (
               <Overlay>
-                <span aria-hidden="true" className="grid h-20 w-20 place-items-center rounded-full bg-good text-white shadow-lift motion-safe:animate-pop">
-                  <Check size={40} strokeWidth={2.75} />
+                {/* Success burst: an expanding ring and eight sparks, then the check scales in (all within the 350 ms window). */}
+                <span aria-hidden="true" className="relative grid h-20 w-20 place-items-center">
+                  <span className="absolute inset-0 rounded-full border-2 border-gold opacity-0 motion-safe:animate-ring-out" />
+                  {SPARKS.map(([x, y], i) => (
+                    <span
+                      key={i}
+                      className="absolute h-2 w-2 rounded-full bg-gold opacity-0 motion-safe:animate-burst"
+                      style={{ ["--bx" as string]: `${x}px`, ["--by" as string]: `${y}px` }}
+                    />
+                  ))}
+                  <span className="grid h-20 w-20 place-items-center rounded-full bg-good text-white shadow-lift motion-safe:animate-pop">
+                    <Check size={40} strokeWidth={2.75} className="[animation-delay:120ms] motion-safe:animate-scale-in" />
+                  </span>
                 </span>
                 <p className="font-display text-[1.4rem] text-cream">Code détecté</p>
                 <p className="font-semibold tracking-[0.08em] tabular-nums text-cream/85">{formatBarcode(detected)}</p>
