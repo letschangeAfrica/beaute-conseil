@@ -8,6 +8,7 @@ import { Avatar } from "@/components/AccountCard";
 import { LegalLinks } from "@/components/LegalLinks";
 import { ProductImage } from "@/components/ProductCard";
 import { CategoryGrid } from "@/components/CategoryGrid";
+import { OpenedReminder } from "@/components/home/OpenedReminder";
 import { Showcase } from "@/components/home/Showcase";
 import { HeroBackdrop } from "@/components/motion/HeroBackdrop";
 import { Reveal } from "@/components/motion/Reveal";
@@ -135,6 +136,8 @@ export default function Home() {
 
       {/* ---------- Showcase: real products, moving ---------- */}
       <Showcase profile={profile} ready={ready} favs={favs} />
+
+      <OpenedReminder />
 
       {/* ---------- Favourites ---------- */}
       {favs.length > 0 && <Favorites favs={favs} />}

@@ -12,6 +12,7 @@ import {
   SULFATES,
   findAny,
   hasDryingAlcohol,
+  matchesAllergy,
   parseIngredients,
 } from "./ingredients";
 import type { Avoid, PricePoint, Product, Profile, Reason, ScoredProduct, Verdict } from "./types";
@@ -178,21 +179,14 @@ const GENERAL_RULES: Rule[] = [labelsRule, popularityRule, budgetRule];
 
 /* ---------- Entry point -------------------------------------------------- */
 
-const stripAccents = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "");
-
 /**
- * Which of her allergies appear in the ingredient list. Errs on the side of warning:
- * accents are ignored and a French final "e" is dropped, so « lanoline » matches INCI "lanolin"
- * and « glycérine » matches "glycerin". Each hit is reported as she typed it.
+ * Which of her allergies appear in the ingredient list (rule in allergyVariants: accents ignored,
+ * French final "e" dropped). Each hit is reported as she typed it.
  */
 function findAllergies(ings: string[], profile: Profile | null): string[] | undefined {
-  const plain = ings.map(stripAccents);
   const hits = new Set<string>();
   for (const raw of profile?.allergies ?? []) {
-    const a = stripAccents(raw.toLowerCase().trim());
-    if (!a) continue;
-    const variants = a.length > 4 && a.endsWith("e") ? [a, a.slice(0, -1)] : [a];
-    if (findAny(plain, variants).length) hits.add(raw.toLowerCase().trim());
+    if (ings.some((ing) => matchesAllergy(ing, raw))) hits.add(raw.toLowerCase().trim());
   }
   return hits.size ? [...hits] : undefined;
 }

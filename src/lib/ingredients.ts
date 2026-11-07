@@ -121,3 +121,22 @@ export function hasDryingAlcohol(ingredients: string[]): boolean {
     (ing) => ing === "alcohol" || ing.startsWith("alcohol denat") || ing.startsWith("sd alcohol") || ing === "ethanol",
   );
 }
+
+const stripAccents = (s: string) => s.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+
+/**
+ * Spellings of one allergy as she typed it, to search for in INCI names. Errs on the side of warning:
+ * accents are ignored and a French final "e" is dropped, so « lanoline » matches "lanolin" and
+ * « glycérine » matches "glycerin". Empty input gives no variant.
+ */
+export function allergyVariants(allergy: string): string[] {
+  const a = stripAccents(allergy.toLowerCase().trim());
+  if (!a) return [];
+  return a.length > 4 && a.endsWith("e") ? [a, a.slice(0, -1)] : [a];
+}
+
+/** True when this ingredient matches this allergy (same rule as the product score). */
+export function matchesAllergy(ingredient: string, allergy: string): boolean {
+  const ing = stripAccents(ingredient.toLowerCase());
+  return allergyVariants(allergy).some((v) => ing.includes(v));
+}

@@ -51,6 +51,8 @@ export interface Product {
   labels: string[];
   quantity?: string;
   scans: number;
+  /** Months the product keeps once opened (the open-jar "12M" symbol), when known. */
+  pao?: number;
 }
 
 export interface PricePoint {

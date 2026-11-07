@@ -14,6 +14,8 @@ export interface KV {
   incr(key: string, ttlSeconds: number): Promise<number>;
   incrByFloat(key: string, by: number, ttlSeconds: number): Promise<number>;
   getNumber(key: string): Promise<number>;
+  /** Several counters in one round trip (missing keys read as 0). */
+  getNumbers(keys: string[]): Promise<number[]>;
   getJSON<T>(key: string): Promise<T | null>;
   setJSON(key: string, value: unknown, ttlSeconds: number): Promise<void>;
   del(key: string): Promise<void>;
@@ -31,6 +33,11 @@ function redisKV(redis: Redis): KV {
     },
     async getNumber(key) {
       return Number((await redis.get<number | string>(key)) ?? 0);
+    },
+    async getNumbers(keys) {
+      if (!keys.length) return [];
+      const values = await redis.mget<(number | string | null)[]>(...keys);
+      return values.map((v) => Number(v ?? 0));
     },
     async getJSON<T>(key: string) {
       return (await redis.get<T>(key)) ?? null;
@@ -69,6 +76,9 @@ function memoryKV(): KV {
     },
     async getNumber(key) {
       return Number(live(key)?.value ?? 0);
+    },
+    async getNumbers(keys) {
+      return keys.map((k) => Number(live(k)?.value ?? 0));
     },
     async getJSON<T>(key: string) {
       return (live(key)?.value as T) ?? null;

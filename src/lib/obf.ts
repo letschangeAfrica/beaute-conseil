@@ -22,6 +22,7 @@ const FIELDS = [
   "labels_tags",
   "quantity",
   "unique_scans_n",
+  "periods_after_opening_tags",
 ].join(",");
 
 interface RawProduct {
@@ -38,6 +39,16 @@ interface RawProduct {
   labels_tags?: string[];
   quantity?: string;
   unique_scans_n?: number;
+  periods_after_opening_tags?: string[];
+}
+
+/** "Period after opening" (the open-jar symbol, e.g. 12M) in months, from tags like "en:12-months". */
+export function paoMonths(tags?: string[]): number | undefined {
+  for (const t of tags ?? []) {
+    const m = /^en:(d{1,2})-months?$/.exec(t);
+    if (m && Number(m[1]) > 0) return Number(m[1]);
+  }
+  return undefined;
 }
 
 function normalize(raw: RawProduct): Product | null {
@@ -53,6 +64,7 @@ function normalize(raw: RawProduct): Product | null {
     labels: raw.labels_tags ?? [],
     quantity: raw.quantity,
     scans: raw.unique_scans_n ?? 0,
+    pao: paoMonths(raw.periods_after_opening_tags),
   };
 }
 

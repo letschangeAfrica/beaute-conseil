@@ -11,7 +11,8 @@ import { kv } from "./kv";
 
 /* ---------- Limits (edit here) ---------------------------------------- */
 
-type Feature = "chat" | "live-prices" | "shade" | "ingredients" | "shade-match";
+export const FEATURES = ["chat", "live-prices", "shade", "ingredients", "shade-match"] as const;
+export type Feature = (typeof FEATURES)[number];
 
 /** Requests allowed per visitor. Signed-in users get the higher numbers. */
 const LIMITS: Record<Feature, { perHour: [anon: number, user: number]; perDay: [anon: number, user: number] }> = {
@@ -24,7 +25,7 @@ const LIMITS: Record<Feature, { perHour: [anon: number, user: number]; perDay: [
 };
 
 /** Total estimated Claude spend allowed per UTC day, across all visitors. Override with DAILY_BUDGET_USD. */
-function dailyBudget(): number {
+export function dailyBudget(): number {
   const v = Number(process.env.DAILY_BUDGET_USD);
   return Number.isFinite(v) && v > 0 ? v : 5;
 }
@@ -84,6 +85,7 @@ const json = (error: string, status: number, headers?: HeadersInit) => Response.
 export async function guard(req: Request, feature: Feature): Promise<Response | null> {
   try {
     if (await overBudget()) {
+      await countStat(feature, "blocked");
       return json("Belle a reçu beaucoup de demandes aujourd'hui. Cette fonction revient demain.", 503);
     }
     const { id, signedIn } = await identify(req);
@@ -95,6 +97,7 @@ export async function guard(req: Request, feature: Feature): Promise<Response | 
       kv.incr(`rl:${feature}:${id}:d:${today()}`, DAY),
     ]);
     if (hour > l.perHour[i] || day > l.perDay[i]) {
+      await countStat(feature, "blocked");
       const retry = day > l.perDay[i] ? "demain" : "dans une heure";
       const hint = signedIn ? "" : " Connectez-vous pour en avoir davantage.";
       const retryAfter = day > l.perDay[i] ? DAY : HOUR - (Math.floor(Date.now() / 1000) % HOUR);
@@ -120,9 +123,51 @@ export async function recordUsage(
 ): Promise<void> {
   if (!message?.usage) return;
   try {
-    const total = await kv.incrByFloat(spendKey(), costOf(message.usage, message.model), 2 * DAY);
+    const cost = costOf(message.usage, message.model);
+    const total = await kv.incrByFloat(spendKey(), cost, 2 * DAY);
+    // Labels may carry a note after the feature name ("chat (client left)"): the cost still counts for the feature.
+    const feature = label.split(" ")[0];
+    if (isFeature(feature)) await Promise.all([countStat(feature, "calls"), kv.incrByFloat(statKey(today(), feature, "usd"), cost, STATS_TTL)]);
     if (total >= dailyBudget()) console.warn(`[budget] daily cap of $${dailyBudget()} reached (last call: ${label})`);
   } catch (err) {
     console.error("[budget] recordUsage", err);
   }
 }
+
+/* ---------- Usage statistics (for the private dashboard /admin/couts) ---------- */
+
+/** Kept 40 days. calls = Claude API calls (a chat answer can make several); blocked = refused by the limits or the budget. */
+const STATS_TTL = 40 * DAY;
+export type StatMetric = "usd" | "calls" | "blocked";
+export const statKey = (day: string, feature: Feature, metric: StatMetric) => `stats:v1:${day}:${feature}:${metric}`;
+const isFeature = (s: string): s is Feature => (FEATURES as readonly string[]).includes(s);
+
+async function countStat(feature: Feature, metric: "calls" | "blocked") {
+  try {
+    await kv.incr(statKey(today(), feature, metric), STATS_TTL);
+  } catch {
+    /* statistics never block a request */
+  }
+}
+
+export interface DayStats {
+  day: string;
+  byFeature: Record<Feature, { usd: number; calls: number; blocked: number }>;
+}
+
+/** The last `days` days (oldest first), read in one round trip. */
+export async function readStats(days: number, now = new Date()): Promise<DayStats[]> {
+  const dayList = Array.from({ length: days }, (_, i) => new Date(now.getTime() - (days - 1 - i) * DAY * 1000).toISOString().slice(0, 10));
+  const metrics: StatMetric[] = ["usd", "calls", "blocked"];
+  const keys = dayList.flatMap((d) => FEATURES.flatMap((f) => metrics.map((m) => statKey(d, f, m))));
+  const values = await kv.getNumbers(keys);
+  let i = 0;
+  return dayList.map((day) => {
+    const byFeature = {} as DayStats["byFeature"];
+    for (const f of FEATURES) byFeature[f] = { usd: values[i++], calls: values[i++], blocked: values[i++] };
+    return { day, byFeature };
+  });
+}
+
+/** Estimated spend so far today (the number the daily cap uses). */
+export const spentToday = () => kv.getNumber(spendKey());

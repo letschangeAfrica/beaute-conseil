@@ -1,6 +1,7 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
 import { SELFIE_CONSENT_VERSION } from "./legal";
+import type { OpenedItem } from "./expiry";
 import type { Profile } from "./types";
 
 /*
@@ -17,6 +18,8 @@ export const KEYS = {
   syncEnabled: "bc.sync.enabled",
   syncUpdatedAt: "bc.sync.updatedAt",
   ingredients: (code: string) => `bc.ingredients.${code}`,
+  compare: "bc.compare",
+  opened: "bc.opened",
 } as const;
 
 /** Keys saved to the account when sync is on. */
@@ -125,12 +128,56 @@ export interface LocalIngredients {
 export const readIngredients = (code: string) => readLocal<LocalIngredients | null>(KEYS.ingredients(code), null);
 export const saveIngredients = (code: string, v: LocalIngredients) => writeLocal(KEYS.ingredients(code), v);
 
+/* ---------- Comparison (up to 3 products, this device only) ---------- */
+
+export interface CompareItem {
+  code: string;
+  name: string;
+  brand: string;
+  image?: string;
+}
+export const MAX_COMPARE = 3;
+
+export function useCompare() {
+  const [items, setItems, ready] = useLocalState<CompareItem[]>(KEYS.compare, []);
+  const has = (code: string) => items.some((i) => i.code === code);
+  /** Adds or removes; returns false when the list is already full. */
+  const toggle = (item: CompareItem) => {
+    if (has(item.code)) {
+      setItems(items.filter((i) => i.code !== item.code));
+      return true;
+    }
+    if (items.length >= MAX_COMPARE) return false;
+    setItems([...items, item]);
+    return true;
+  };
+  const remove = (code: string) => setItems(items.filter((i) => i.code !== code));
+  return { items, has, toggle, remove, clear: () => setItems([]), ready };
+}
+
+/* ---------- Opened products (this device only) ---------- */
+
+export function useOpened() {
+  const [items, setItems, ready] = useLocalState<OpenedItem[]>(KEYS.opened, []);
+  const get = (code: string) => items.find((i) => i.code === code);
+  const save = (item: OpenedItem) => setItems([item, ...items.filter((i) => i.code !== item.code)]);
+  const remove = (code: string) => setItems(items.filter((i) => i.code !== code));
+  return { items, get, save, remove, ready };
+}
+
 /** Erase everything Belle stores on this device (profile, favourites, chat, consents). */
 export function clearLocalData() {
   try {
     for (const key of Object.keys(localStorage)) if (key.startsWith("bc.")) localStorage.removeItem(key);
   } catch {
     /* storage unavailable: nothing stored */
+  }
+  // Offline copies of visited pages and product sheets (service worker caches): they hold scored data too.
+  if ("caches" in window) {
+    caches
+      .keys()
+      .then((keys) => Promise.all(keys.filter((k) => k.startsWith("belle-")).map((k) => caches.delete(k))))
+      .catch(() => {});
   }
   window.dispatchEvent(new CustomEvent<StorageEventDetail>(STORAGE_EVENT, { detail: { key: "*", local: false } }));
 }

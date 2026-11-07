@@ -7,6 +7,7 @@ import { IngredientPhoto, type LabelReading } from "@/components/IngredientPhoto
 import ProductCard from "@/components/ProductCard";
 import { IngredientList } from "@/components/product/IngredientList";
 import { PriceSection } from "@/components/product/PriceSection";
+import { ProductActions } from "@/components/product/ProductActions";
 import { AllergyAlert, ProductHero, StickySummary } from "@/components/product/ProductHero";
 import { ReasonList } from "@/components/product/ReasonList";
 import { ShadeSection } from "@/components/product/ShadeSection";
@@ -198,6 +199,7 @@ export default function ProduitPage({ params }: { params: Promise<{ code: string
           <div ref={heroRef}>
             <ProductHero p={p} personal={!!profile} fav={fav} onToggleFav={toggleFav} />
           </div>
+          <ProductActions p={p} />
         </div>
 
         {/* Right: why, shade, prices, alternatives, ingredients. */}
@@ -257,7 +259,7 @@ export default function ProduitPage({ params }: { params: Promise<{ code: string
             </section>
           )}
 
-          {p.ingredientsText && <IngredientList text={p.ingredientsText} allergyHit={p.allergyHit} />}
+          {p.ingredientsText && <IngredientList text={p.ingredientsText} allergyHit={p.allergyHit} profile={profile} />}
 
           <p className="text-center text-xs leading-relaxed text-ink/70">
             Données produits : Open Beauty Facts · Prix en magasin : Open Prices
