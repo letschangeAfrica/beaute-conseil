@@ -78,4 +78,18 @@ describe("POST /api/chat stream", () => {
     expect(turn.finalMessage).not.toHaveBeenCalled();
     expect(errors).not.toHaveBeenCalled();
   });
+
+  it("rejects an oversized history with 400 before any model call (audit S-01)", async () => {
+    const big = Array.from({ length: 12 }, (_, i) => ({ role: i % 2 ? "assistant" : "user", content: "x".repeat(3_000) }));
+    const res = await POST(new Request("http://test/api/chat", { method: "POST", body: JSON.stringify({ profile: null, messages: big }) }));
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: "Conversation trop longue : commencez une nouvelle conversation." });
+    expect(stream).not.toHaveBeenCalled();
+  });
+
+  it("caps the model output per turn (max_tokens 2048, was 64000)", async () => {
+    stream.mockReturnValue(fakeTurn(["ok"]));
+    await (await POST(chatRequest())).text();
+    expect(stream).toHaveBeenCalledWith(expect.objectContaining({ max_tokens: 2048 }));
+  });
 });

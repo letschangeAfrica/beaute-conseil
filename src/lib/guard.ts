@@ -15,7 +15,8 @@ type Feature = "chat" | "live-prices" | "shade" | "ingredients" | "shade-match";
 
 /** Requests allowed per visitor. Signed-in users get the higher numbers. */
 const LIMITS: Record<Feature, { perHour: [anon: number, user: number]; perDay: [anon: number, user: number] }> = {
-  chat: { perHour: [10, 30], perDay: [25, 100] },
+  // Anonymous is the cheapest identity to fake (an IP), so it gets the smallest share of the daily budget (audit S-01).
+  chat: { perHour: [5, 30], perDay: [12, 100] },
   "live-prices": { perHour: [5, 15], perDay: [15, 50] }, // cache hits don't count
   shade: { perHour: [3, 6], perDay: [5, 15] },
   ingredients: { perHour: [5, 15], perDay: [10, 40] },

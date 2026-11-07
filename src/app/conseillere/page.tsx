@@ -17,21 +17,14 @@ import {
 } from "@/components/chat/MessageBubble";
 import type { ChatEvent } from "@/lib/types";
 import { KEYS, readLocal, useProfile, writeLocal } from "@/lib/useLocal";
-import { errorMessage } from "@/lib/utils";
+import { errorMessage, fitChatHistory } from "@/lib/utils";
 
 /** Messages kept on the device. */
 const MAX_SAVED = 60;
-/** Messages sent to the AI as context (the API accepts up to 40). */
-const MAX_CONTEXT = 20;
 
-/** The last turns of the conversation, starting with a question, in the shape the API expects. */
+/** The last turns of the conversation that fit the API's limits (CHAT_LIMITS), starting with a question. */
 function recentTurns(history: Msg[]) {
-  const turns = history.filter((m) => m.content.trim()).slice(-MAX_CONTEXT);
-  while (turns.length && turns[0].role !== "user") turns.shift();
-  return turns.map(({ role, content }) => ({
-    role,
-    content: content.slice(0, 8000),
-  }));
+  return fitChatHistory(history.map(({ role, content }) => ({ role, content })));
 }
 
 const reducedMotion = () =>

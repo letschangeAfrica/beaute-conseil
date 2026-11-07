@@ -113,3 +113,44 @@ export function reasonsByKind(reasons: readonly Reason[]): Record<Reason["kind"]
   for (const r of reasons) out[r.kind].push(r);
   return out;
 }
+
+/* ---------- Chat limits (shared by the advisor page and /api/chat) ------ */
+
+/**
+ * The whole history is resent to the model on every turn, so its size is what a chat request costs.
+ * These caps keep one request to a few cents (audit S-01: before, 40 × 8,000 characters and
+ * 64,000 output tokens let a few anonymous requests exhaust the daily AI budget).
+ */
+export const CHAT_LIMITS = {
+  /** Messages sent as context. */
+  maxMessages: 20,
+  /** Characters per message (longer ones are cut). */
+  maxMessageChars: 4_000,
+  /** Characters for the whole history: about 7,000 tokens of French. */
+  maxHistoryChars: 24_000,
+  /** Model output per turn: replies are 3–6 sentences. */
+  maxOutputTokens: 2_048,
+} as const;
+
+export interface ChatTurn {
+  role: "user" | "assistant";
+  content: string;
+}
+
+/**
+ * The most recent turns that fit CHAT_LIMITS, oldest first, starting with a question.
+ * Older turns are dropped first; the latest question is always kept (cut if needed).
+ */
+export function fitChatHistory(history: readonly ChatTurn[]): ChatTurn[] {
+  const out: ChatTurn[] = [];
+  let total = 0;
+  for (let i = history.length - 1; i >= 0 && out.length < CHAT_LIMITS.maxMessages; i--) {
+    const content = history[i].content.trim().slice(0, CHAT_LIMITS.maxMessageChars);
+    if (!content) continue;
+    if (out.length && total + content.length > CHAT_LIMITS.maxHistoryChars) break;
+    out.unshift({ role: history[i].role, content });
+    total += content.length;
+  }
+  while (out.length && out[0].role !== "user") out.shift();
+  return out;
+}

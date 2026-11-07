@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { GENERIC_ERROR, NETWORK_ERROR, asBarcode, errorMessage, parseBarcode, postJson } from "./utils";
+import { CHAT_LIMITS, GENERIC_ERROR, NETWORK_ERROR, asBarcode, errorMessage, fitChatHistory, parseBarcode, postJson } from "./utils";
 
 describe("errorMessage: users never see browser, parser or programming internals", () => {
   it.each(["Failed to fetch", "NetworkError when attempting to fetch resource.", "Load failed"])(
@@ -75,5 +75,42 @@ describe("barcode rule (one rule for scanner, server and price cache)", () => {
   it("parseBarcode still enforces the length rule", () => {
     expect(parseBarcode("12-34-56")).toBeNull(); // 6 digits: was accepted by the server before
     expect(parseBarcode("1".repeat(15))).toBeNull(); // 15 digits: was accepted by manual entry before
+  });
+});
+
+describe("fitChatHistory: what the advisor page sends stays within the API's cost caps (audit S-01)", () => {
+  const turn = (role: "user" | "assistant", n: number, ch = "a") => ({ role, content: ch.repeat(n) });
+  const total = (ts: { content: string }[]) => ts.reduce((n, t) => n + t.content.length, 0);
+
+  it("keeps a short conversation unchanged", () => {
+    const h = [turn("user", 10), turn("assistant", 20), turn("user", 5)];
+    expect(fitChatHistory(h)).toEqual(h);
+  });
+
+  it("drops the oldest turns first to fit the total character budget", () => {
+    const h = Array.from({ length: 12 }, (_, i) => turn(i % 2 ? "assistant" : "user", 3_000, String(i % 10)));
+    const out = fitChatHistory(h);
+    expect(total(out)).toBeLessThanOrEqual(CHAT_LIMITS.maxHistoryChars);
+    expect(out.at(-1)).toEqual(h.at(-1)); // the latest turn is always there
+    expect(out[0].role).toBe("user");
+  });
+
+  it("caps the number of messages and the size of each one", () => {
+    const h = Array.from({ length: 50 }, (_, i) => turn(i % 2 ? "assistant" : "user", 9_000));
+    const out = fitChatHistory(h);
+    expect(out.length).toBeLessThanOrEqual(CHAT_LIMITS.maxMessages);
+    expect(Math.max(...out.map((t) => t.content.length))).toBeLessThanOrEqual(CHAT_LIMITS.maxMessageChars);
+    expect(total(out)).toBeLessThanOrEqual(CHAT_LIMITS.maxHistoryChars);
+  });
+
+  it("always starts with a question and skips empty turns", () => {
+    const out = fitChatHistory([turn("assistant", 10), turn("user", 0), turn("user", 4), turn("assistant", 4)]);
+    expect(out.map((t) => t.role)).toEqual(["user", "assistant"]);
+  });
+
+  it("keeps (and cuts) a single over-long question instead of sending nothing", () => {
+    const out = fitChatHistory([turn("user", 50_000)]);
+    expect(out).toHaveLength(1);
+    expect(out[0].content).toHaveLength(CHAT_LIMITS.maxMessageChars);
   });
 });

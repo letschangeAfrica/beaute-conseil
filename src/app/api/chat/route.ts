@@ -6,15 +6,18 @@ import { FALLBACK, MODEL, anthropic, profileSummary } from "@/lib/claude";
 import { guard, overBudget, recordUsage } from "@/lib/guard";
 import { PRICE_DOMAINS } from "@/lib/stores";
 import type { ChatEvent, Profile } from "@/lib/types";
+import { CHAT_LIMITS } from "@/lib/utils";
 
 export const maxDuration = 300;
 
+// Same caps as the advisor page uses (fitChatHistory): the server enforces them, the page just stays inside them.
 const Body = z.object({
   profile: ProfileSchema,
   messages: z
-    .array(z.object({ role: z.enum(["user", "assistant"]), content: z.string().max(8000) }))
+    .array(z.object({ role: z.enum(["user", "assistant"]), content: z.string().max(CHAT_LIMITS.maxMessageChars) }))
     .min(1)
-    .max(40),
+    .max(CHAT_LIMITS.maxMessages)
+    .refine((ms) => ms.reduce((n, m) => n + m.content.length, 0) <= CHAT_LIMITS.maxHistoryChars, "Conversation trop longue"),
 });
 
 const SYSTEM = `Tu es « Belle », une conseillère beauté indépendante qui aide une femme vivant en France à choisir son maquillage et ses soins.
@@ -75,7 +78,11 @@ async function runSearch(input: unknown, profile: Profile | null, emit: Emit) {
 export async function POST(req: Request) {
   const noKey = requireApiKey();
   if (noKey) return noKey;
-  const parsed = await parseBody(req, Body);
+  const parsed = await parseBody(req, Body, (e) =>
+    e.issues.some((i) => i.path[0] === "messages")
+      ? "Conversation trop longue : commencez une nouvelle conversation."
+      : "Requête invalide",
+  );
   if (!parsed.ok) return parsed.response;
   const blocked = await guard(req, "chat");
   if (blocked) return blocked;
@@ -107,7 +114,7 @@ export async function POST(req: Request) {
           }
           const turnStream = anthropic.beta.messages.stream({
             model: MODEL,
-            max_tokens: 64000,
+            max_tokens: CHAT_LIMITS.maxOutputTokens, // replies are 3–6 sentences; bounds the cost of a turn
             ...FALLBACK,
             output_config: { effort: "medium" },
             system: [
