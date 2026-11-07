@@ -3,7 +3,7 @@ import Link from "next/link";
 import { ArrowRight, CalendarClock, Trash2 } from "lucide-react";
 import { ProductImage } from "@/components/ProductCard";
 import { PageHeader } from "@/components/ui";
-import { type ExpiryStatus, daysLeft, expiryStatus, formatDay, leftLabel, todayLocal, useBy } from "@/lib/expiry";
+import { type ExpiryStatus, daysLeft, expiryStatus, formatDay, leftLabel, todayLocal, lastUseDay } from "@/lib/expiry";
 import { useOpened } from "@/lib/useLocal";
 
 const STATUS: Record<ExpiryStatus, { label: string; cls: string }> = {
@@ -46,7 +46,7 @@ export default function MesProduitsPage() {
                     {item.name}
                   </Link>
                   <p className="mt-0.5 text-sm text-ink/75">
-                    Ouvert le {formatDay(item.openedAt)} · avant le {formatDay(useBy(item))}
+                    Ouvert le {formatDay(item.openedAt)} · avant le {formatDay(lastUseDay(item))}
                   </p>
                   <p className="mt-1.5 flex flex-wrap items-center gap-2">
                     <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ring-1 ${s.cls}`}>{s.label}</span>

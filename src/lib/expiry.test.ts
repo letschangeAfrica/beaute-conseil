@@ -1,16 +1,16 @@
 import { describe, expect, it } from "vitest";
-import { daysLeft, expiryStatus, leftLabel, useBy } from "./expiry";
+import { daysLeft, expiryStatus, leftLabel, lastUseDay } from "./expiry";
 
-describe("useBy", () => {
+describe("lastUseDay", () => {
   it("adds whole months", () => {
-    expect(useBy({ openedAt: "2026-03-15", months: 12 })).toBe("2027-03-15");
-    expect(useBy({ openedAt: "2026-11-07", months: 6 })).toBe("2027-05-07");
+    expect(lastUseDay({ openedAt: "2026-03-15", months: 12 })).toBe("2027-03-15");
+    expect(lastUseDay({ openedAt: "2026-11-07", months: 6 })).toBe("2027-05-07");
   });
 
   it("clamps to the end of shorter months", () => {
-    expect(useBy({ openedAt: "2026-01-31", months: 1 })).toBe("2026-02-28");
-    expect(useBy({ openedAt: "2027-01-31", months: 1 })).toBe("2027-02-28");
-    expect(useBy({ openedAt: "2028-01-31", months: 1 })).toBe("2028-02-29");
+    expect(lastUseDay({ openedAt: "2026-01-31", months: 1 })).toBe("2026-02-28");
+    expect(lastUseDay({ openedAt: "2027-01-31", months: 1 })).toBe("2027-02-28");
+    expect(lastUseDay({ openedAt: "2028-01-31", months: 1 })).toBe("2028-02-29");
   });
 });
 

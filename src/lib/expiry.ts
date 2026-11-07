@@ -29,7 +29,7 @@ const parseDay = (iso: string) => {
 };
 
 /** Last day of use, "YYYY-MM-DD". Month arithmetic clamps to the month's end (31 Jan + 1 month = 28/29 Feb). */
-export function useBy(item: Pick<OpenedItem, "openedAt" | "months">): string {
+export function lastUseDay(item: Pick<OpenedItem, "openedAt" | "months">): string {
   const [y, m, d] = item.openedAt.split("-").map(Number);
   const target = new Date(Date.UTC(y, m - 1 + item.months, 1));
   const lastDay = new Date(Date.UTC(target.getUTCFullYear(), target.getUTCMonth() + 1, 0)).getUTCDate();
@@ -39,7 +39,7 @@ export function useBy(item: Pick<OpenedItem, "openedAt" | "months">): string {
 
 /** Whole days from `today` until the use-by day (negative once past). */
 export function daysLeft(item: Pick<OpenedItem, "openedAt" | "months">, today: string): number {
-  return Math.round((parseDay(useBy(item)) - parseDay(today)) / DAY_MS);
+  return Math.round((parseDay(lastUseDay(item)) - parseDay(today)) / DAY_MS);
 }
 
 export function expiryStatus(item: Pick<OpenedItem, "openedAt" | "months">, today: string): ExpiryStatus {

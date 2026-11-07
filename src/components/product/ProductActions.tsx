@@ -2,7 +2,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { ArrowRight, CalendarClock, Columns3, Pencil } from "lucide-react";
-import { DEFAULT_PAO, PAO_CHOICES, expiryStatus, formatDay, leftLabel, daysLeft, todayLocal, useBy } from "@/lib/expiry";
+import { DEFAULT_PAO, PAO_CHOICES, expiryStatus, formatDay, leftLabel, daysLeft, todayLocal, lastUseDay } from "@/lib/expiry";
 import type { ScoredProduct } from "@/lib/types";
 import { MAX_COMPARE, useCompare, useOpened } from "@/lib/useLocal";
 
@@ -72,7 +72,7 @@ function OpenedAction({ p }: { p: ScoredProduct }) {
         <CalendarClock size={20} aria-hidden="true" className="mt-0.5 shrink-0 text-brand" />
         <div className="min-w-0 flex-1 text-sm leading-relaxed">
           <p className="text-ink/85">
-            Ouvert le {formatDay(opened.openedAt)} · à utiliser avant le <strong className="font-semibold">{formatDay(useBy(opened))}</strong>
+            Ouvert le {formatDay(opened.openedAt)} · à utiliser avant le <strong className="font-semibold">{formatDay(lastUseDay(opened))}</strong>
           </p>
           <p className={`font-semibold ${STATUS_STYLE[status]}`}>{leftLabel(daysLeft(opened, today))}</p>
           <Link href="/mes-produits" className="mt-1 inline-flex min-h-11 items-center gap-1 font-semibold text-brand underline-offset-2 hover:underline">

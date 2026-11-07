@@ -238,8 +238,15 @@ export default function ConfidentialitePage() {
           <li className="flex gap-3">
             <Smartphone size={18} aria-hidden="true" className="mt-1 shrink-0 text-caramel-ink" />
             <span>
-              stockage local du navigateur pour votre profil, vos favoris, la conversation, vos dernières recherches et vos derniers produits scannés, les ingrédients lus sur vos photos
-              et vos choix de consentement.
+              stockage local du navigateur pour votre profil, vos favoris, la conversation, vos dernières recherches et vos derniers produits scannés, les ingrédients lus sur vos photos,
+              les produits que vous comparez, vos produits ouverts et leurs dates, et vos choix de consentement&nbsp;;
+            </span>
+          </li>
+          <li className="flex gap-3">
+            <Smartphone size={18} aria-hidden="true" className="mt-1 shrink-0 text-caramel-ink" />
+            <span>
+              une copie hors ligne des pages et des fiches produits que vous avez consultées (avec leur score pour vous), pour que l&apos;application fonctionne sans réseau. Elle reste sur
+              votre téléphone.
             </span>
           </li>
         </ul>

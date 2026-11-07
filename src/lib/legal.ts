@@ -21,7 +21,7 @@ export const LEGAL = {
     address: "440 N Barranca Ave #4133, Covina, CA 91723, États-Unis",
     url: "https://vercel.com",
   },
-  updated: "6 novembre 2026",
+  updated: "7 novembre 2026",
 } as const;
 
 /** Bump when the selfie processing changes, so people are asked again. */
