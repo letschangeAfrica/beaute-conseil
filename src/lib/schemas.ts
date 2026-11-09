@@ -7,6 +7,7 @@ import {
   SKIN_TONE_VALUES,
   SKIN_TYPE_VALUES,
   UNDERTONE_VALUES,
+  PROFILE_LIMITS,
 } from "./types";
 
 /**
@@ -27,22 +28,33 @@ export const ShadeSchema = z.object({
 });
 export type ShadeAnalysis = z.infer<typeof ShadeSchema>;
 
-/** Loose runtime validation of a profile coming from the browser. */
-export const ProfileSchema = z
-  .object({
-    name: z.string().max(60).optional(),
-    skinType: z.enum(SKIN_TYPE_VALUES),
-    sensitive: z.boolean(),
-    skinTone: z.enum(SKIN_TONE_VALUES),
-    undertone: z.enum(UNDERTONE_VALUES),
-    concerns: z.array(z.enum(CONCERN_VALUES)).max(10),
-    avoid: z.array(z.enum(AVOID_VALUES)).max(10),
-    prefs: z.array(z.enum(PREF_VALUES)).max(5),
-    allergies: z.array(z.string().max(60)).max(30),
-    budget: z.number().min(0).max(1000),
-    city: z.string().max(80).optional(),
-    // A stale or malformed shadeAdvice is dropped on its own instead of nulling the whole profile.
-    shadeAdvice: ShadeSchema.optional().catch(undefined),
-  })
-  .nullable()
-  .catch(null);
+/** Trimmed and shortened text: an over-long value is cut, never a reason to reject the profile. */
+const text = (max: number) => z.string().transform((s) => s.trim().slice(0, max));
+
+/**
+ * The profile, repaired field by field (audit M-2). Before, one invalid field (a 61-character INCI name,
+ * 31 allergies, an 81-character city) turned the WHOLE profile into null: allergy warnings vanished
+ * without notice and sync overwrote the other devices with nothing. Now each optional field falls back
+ * on its own, and allergies (safety data) are shortened, never dropped.
+ */
+export const ProfileFields = z.object({
+  name: text(PROFILE_LIMITS.nameChars).optional().catch(undefined),
+  skinType: z.enum(SKIN_TYPE_VALUES),
+  sensitive: z.boolean(),
+  skinTone: z.enum(SKIN_TONE_VALUES),
+  undertone: z.enum(UNDERTONE_VALUES),
+  concerns: z.array(z.enum(CONCERN_VALUES)).max(10).catch([]),
+  avoid: z.array(z.enum(AVOID_VALUES)).max(10).catch([]),
+  prefs: z.array(z.enum(PREF_VALUES)).max(5).catch([]),
+  allergies: z.array(text(PROFILE_LIMITS.allergyChars)).transform((a) => a.filter(Boolean).slice(0, PROFILE_LIMITS.allergies)),
+  budget: z.number().min(0).max(1000).catch(0),
+  city: text(PROFILE_LIMITS.cityChars).optional().catch(undefined),
+  // A stale or malformed shadeAdvice is dropped on its own instead of nulling the whole profile.
+  shadeAdvice: ShadeSchema.optional().catch(undefined),
+});
+
+/** Read-only routes (search, product, chat): an unusable profile means "no profile", the request still works. */
+export const ProfileSchema = ProfileFields.nullable().catch(null);
+
+/** Account sync (/api/me): an unusable profile is a 400, never stored as null over her other devices. */
+export const StoredProfileSchema = ProfileFields.nullable();

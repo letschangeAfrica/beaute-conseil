@@ -2,7 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
 import { anthropicErrorResponse, jsonError, parseBody, requireApiKey } from "@/lib/api-utils";
 import { FALLBACK, MODEL, anthropic } from "@/lib/claude";
-import { guard, recordUsage } from "@/lib/guard";
+import { guard, overBudget, recordUsage, release } from "@/lib/guard";
 import { kv } from "@/lib/kv";
 import { SKIN_TONE_VALUES, UNDERTONE_VALUES } from "@/lib/types";
 import { getProduct } from "@/lib/obf";
@@ -113,15 +113,21 @@ Trouve la gamme de teintes de CE produit (site de la marque ou revendeurs franç
 
   try {
     for (let turn = 0; turn < 4; turn++) {
+      // Audit M-6: stop between turns once the day's budget is spent (each extra turn re-sends the searches).
+      if (turn > 0 && (await overBudget("shade-match"))) return jsonError("Belle a reçu beaucoup de demandes aujourd'hui. Cette fonction revient demain.", 503);
       const response = await anthropic.beta.messages.create({
         model: MODEL,
-        max_tokens: 16000,
+        // Audit M-6: the useful output is one small tool call; 6,000 leaves room for thinking (was 16,000).
+        max_tokens: 6000,
         ...FALLBACK,
         output_config: { effort: "medium" },
         system: `Tu aides à choisir une teinte de maquillage dans la gamme réelle d'un produit.\n\n${UNTRUSTED_RULE}`,
         tools: [{ type: "web_search_20260209", name: "web_search", max_uses: 4, user_location: { type: "approximate", country: "FR" } }, reportTool],
         messages,
-      });
+      },
+      // maxDuration is 120 s for up to 4 turns: keep each turn short instead of the SDK's 10-minute default.
+      { timeout: 25_000, maxRetries: 1 },
+      );
       await recordUsage(response, "shade-match");
       if (response.stop_reason === "refusal") return jsonError("La recherche de teinte n'a pas pu aboutir.", 502);
 
@@ -149,5 +155,7 @@ Trouve la gamme de teintes de CE produit (site de la marque ou revendeurs franç
     return jsonError("Teintes introuvables pour le moment.", 504);
   } catch (err) {
     return anthropicErrorResponse(err, "shade-match", "Service de teintes indisponible.");
+  } finally {
+    await release("shade-match"); // give back the budget reserved by guard() (audit M-5)
   }
 }

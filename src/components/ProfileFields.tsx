@@ -1,6 +1,7 @@
 "use client";
 import { createContext, useContext, useRef, useState } from "react";
 import { Check, Plus, X } from "lucide-react";
+import { PROFILE_LIMITS } from "@/lib/types";
 import type { Avoid, Concern, Pref, SkinTone, SkinType, Undertone } from "@/lib/types";
 
 /* Options and form controls shared by the profile page and the welcome flow. */
@@ -263,7 +264,9 @@ export function AllergyEditor({ allergies, onChange, inputId }: { allergies: str
   const ref = useRef<HTMLInputElement>(null);
   const add = () => {
     const v = input.trim().toLowerCase();
-    if (v && !allergies.includes(v)) {
+    if (v && allergies.length >= PROFILE_LIMITS.allergies) {
+      setAnnounce(`Maximum ${PROFILE_LIMITS.allergies} allergies : retirez-en une pour en ajouter`);
+    } else if (v && !allergies.includes(v)) {
       onChange([...allergies, v]);
       setAnnounce(`${v} ajouté`);
     } else if (v) {
@@ -291,6 +294,7 @@ export function AllergyEditor({ allergies, onChange, inputId }: { allergies: str
           className="input"
           value={input}
           onChange={(e) => setInput(e.target.value)}
+          maxLength={PROFILE_LIMITS.allergyChars}
           placeholder="Ex. linalool"
           aria-label="Ingrédient auquel vous êtes allergique"
           enterKeyHint="done"

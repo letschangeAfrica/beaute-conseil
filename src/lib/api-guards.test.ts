@@ -44,7 +44,7 @@ describe("anthropicErrorResponse: every error becomes a JSON response (never a r
 describe("parseBody: the message can name the field that failed", () => {
   const Shade = z.object({ image: z.string(), consent: z.literal(true) });
   const msg = (e: z.ZodError) => (e.issues.some((i) => i.path[0] === "consent") ? "Consentement requis" : "Image invalide");
-  const req = (body: unknown) => new Request("http://test/api", { method: "POST", body: JSON.stringify(body) });
+  const req = (body: unknown) => new Request("http://test/api", { method: "POST", body: JSON.stringify(body), headers: { "Content-Type": "application/json" } });
 
   it("missing consent → consent message", async () => {
     const r = await parseBody(req({ image: "x", consent: false }), Shade, msg);
@@ -95,5 +95,45 @@ describe("costOf: priced by the model that actually answered", () => {
 
   it("falls back to the most expensive known prices for an unknown model (never under-estimates)", () => {
     expect(costOf(usage, "some-fallback-model")).toBeCloseTo(costOf(usage, "claude-opus-5-5"), 6);
+  });
+});
+
+describe("parseBody: only same-site JSON of a sane size (audit M-3)", () => {
+  const Body = z.object({ q: z.string() });
+  const json = JSON.stringify({ q: "mascara" });
+
+  it("refuses a text/plain 'simple' request (CSRF from another site) with 415", async () => {
+    const r = await parseBody(new Request("http://test/api", { method: "POST", body: json, headers: { "Content-Type": "text/plain" } }), Body);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.response.status).toBe(415);
+  });
+
+  it("refuses a request the browser marks as cross-site with 403", async () => {
+    const headers = { "Content-Type": "application/json", "Sec-Fetch-Site": "cross-site" };
+    const r = await parseBody(new Request("http://test/api", { method: "POST", body: json, headers }), Body);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.response.status).toBe(403);
+  });
+
+  it("accepts same-origin requests (and clients that send no Sec-Fetch-Site)", async () => {
+    for (const site of ["same-origin", null]) {
+      const headers: Record<string, string> = { "Content-Type": "application/json; charset=utf-8" };
+      if (site) headers["Sec-Fetch-Site"] = site;
+      const r = await parseBody(new Request("http://test/api", { method: "POST", body: json, headers }), Body);
+      expect(r.ok).toBe(true);
+    }
+  });
+
+  it("refuses a body over the route's cap with 413, even without Content-Length", async () => {
+    const big = JSON.stringify({ q: "x".repeat(40_000) });
+    const r = await parseBody(new Request("http://test/api", { method: "POST", body: big, headers: { "Content-Type": "application/json" } }), Body);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.response.status).toBe(413);
+  });
+
+  it("lets a route raise its cap", async () => {
+    const big = JSON.stringify({ q: "x".repeat(40_000) });
+    const r = await parseBody(new Request("http://test/api", { method: "POST", body: big, headers: { "Content-Type": "application/json" } }), Body, undefined, { maxBytes: 128_000 });
+    expect(r.ok).toBe(true);
   });
 });

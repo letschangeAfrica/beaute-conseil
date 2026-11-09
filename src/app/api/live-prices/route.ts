@@ -2,7 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
 import { anthropicErrorResponse, parseBody, requireApiKey } from "@/lib/api-utils";
 import { FALLBACK, MODEL, anthropic } from "@/lib/claude";
-import { guard, recordUsage } from "@/lib/guard";
+import { guard, overBudget, recordUsage, release } from "@/lib/guard";
 import { kv } from "@/lib/kv";
 import { PRICE_DOMAINS } from "@/lib/stores";
 import type { PricePoint } from "@/lib/types";
@@ -117,10 +117,13 @@ Cherche sur plusieurs enseignes (parfumeries, parapharmacies, grandes surfaces, 
 
   try {
     for (let turn = 0; turn < 4; turn++) {
+      // Audit M-6: stop between turns once the day's budget is spent (each extra turn re-sends the searches).
+      if (turn > 0 && (await overBudget("live-prices"))) return Response.json({ error: "Belle a reçu beaucoup de demandes aujourd'hui. Cette fonction revient demain." }, { status: 503 });
       const response = await anthropic.beta.messages.create(
         {
           model: MODEL,
-          max_tokens: 16000,
+          // Audit M-6: the useful output is one small tool call; 6,000 leaves room for thinking (was 16,000).
+          max_tokens: 6000,
           ...FALLBACK,
           output_config: { effort: "medium" },
           system: `Tu compares les prix d'un produit de beauté chez les revendeurs français en ligne.\n\n${UNTRUSTED_RULE}`,
@@ -181,5 +184,7 @@ Cherche sur plusieurs enseignes (parfumeries, parapharmacies, grandes surfaces, 
     return Response.json({ error: "Aucun prix trouvé pour le moment." }, { status: 502 });
   } catch (err) {
     return anthropicErrorResponse(err, "live-prices", "Service de prix indisponible.");
+  } finally {
+    await release("live-prices"); // give back the budget reserved by guard() (audit M-5)
   }
 }

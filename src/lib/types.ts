@@ -84,3 +84,6 @@ export interface ScoredProduct extends Product {
 export type ChatEvent =
   | { type: "text" | "status" | "error"; text: string }
   | { type: "products"; items: Pick<ScoredProduct, "code" | "name" | "brand" | "image" | "score" | "verdict">[] };
+
+/** Profile field limits, shared by the editor and the validation (schemas.ts). Plain constants: no dependency in the browser bundle. */
+export const PROFILE_LIMITS = { allergyChars: 120, allergies: 50, cityChars: 80, nameChars: 60 } as const;

@@ -1,9 +1,9 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
-import { parseBody, requireApiKey } from "@/lib/api-utils";
+import { BODY_LIMITS, parseBody, requireApiKey } from "@/lib/api-utils";
 import { ProfileSchema, searchAndScore } from "@/lib/catalog";
 import { FALLBACK, MODEL, anthropic, profileSummary } from "@/lib/claude";
-import { guard, overBudget, recordUsage } from "@/lib/guard";
+import { guard, overBudget, recordUsage, release } from "@/lib/guard";
 import { PRICE_DOMAINS } from "@/lib/stores";
 import type { ChatEvent, Profile } from "@/lib/types";
 import { cleanText, fence, UNTRUSTED_RULE } from "@/lib/untrusted";
@@ -90,6 +90,7 @@ export async function POST(req: Request) {
     e.issues.some((i) => i.path[0] === "messages")
       ? "Conversation trop longue : commencez une nouvelle conversation."
       : "Requête invalide",
+    { maxBytes: BODY_LIMITS.chat },
   );
   if (!parsed.ok) return parsed.response;
   const blocked = await guard(req, "chat");
@@ -116,7 +117,7 @@ export async function POST(req: Request) {
       };
       try {
         for (let turn = 0; turn < 8 && !closed; turn++) {
-          if (turn > 0 && (await overBudget())) {
+          if (turn > 0 && (await overBudget("chat"))) {
             emit({ type: "text", text: "\n\nJe dois m'arrêter là pour aujourd'hui, réessayez demain." });
             break;
           }
@@ -188,6 +189,8 @@ export async function POST(req: Request) {
             : "Oups, la conseillère est momentanément indisponible.";
         emit({ type: "error", text: msg });
       } finally {
+        // The answer is over (finished, failed or the visitor left): give back the budget reserved by guard() (audit M-5).
+        await release("chat");
         if (!closed) controller.close();
       }
     },

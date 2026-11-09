@@ -1,8 +1,8 @@
 import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod";
 import { z } from "zod";
-import { anthropicErrorResponse, parseBody, requireApiKey } from "@/lib/api-utils";
+import { anthropicErrorResponse, BODY_LIMITS, parseBody, requireApiKey } from "@/lib/api-utils";
 import { FALLBACK, MODEL, anthropic } from "@/lib/claude";
-import { guard, recordUsage } from "@/lib/guard";
+import { guard, recordUsage, release } from "@/lib/guard";
 import { ShadeSchema } from "@/lib/schemas";
 
 export const maxDuration = 60;
@@ -24,6 +24,7 @@ export async function POST(req: Request) {
   if (noKey) return noKey;
   const parsed = await parseBody(req, Body, (e) =>
     e.issues.some((i) => i.path[0] === "consent") ? "Consentement requis avant l'analyse de la photo." : "Image invalide",
+    { maxBytes: BODY_LIMITS.image },
   );
   if (!parsed.ok) return parsed.response;
   const blocked = await guard(req, "shade");
@@ -57,5 +58,7 @@ export async function POST(req: Request) {
     return Response.json(response.parsed_output);
   } catch (err) {
     return anthropicErrorResponse(err, "shade", "Service d'analyse indisponible.");
+  } finally {
+    await release("shade"); // give back the budget reserved by guard() (audit M-5)
   }
 }

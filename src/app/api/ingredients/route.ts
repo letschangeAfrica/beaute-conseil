@@ -1,8 +1,8 @@
 import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod";
 import { z } from "zod";
-import { anthropicErrorResponse, jsonError, parseBody, requireApiKey } from "@/lib/api-utils";
+import { anthropicErrorResponse, jsonError, BODY_LIMITS, parseBody, requireApiKey } from "@/lib/api-utils";
 import { FALLBACK, MODEL, anthropic } from "@/lib/claude";
-import { guard, recordUsage } from "@/lib/guard";
+import { guard, recordUsage, release } from "@/lib/guard";
 import { cleanText, UNTRUSTED_RULE } from "@/lib/untrusted";
 
 export const maxDuration = 60;
@@ -31,7 +31,7 @@ ${UNTRUSTED_RULE}`;
 export async function POST(req: Request) {
   const noKey = requireApiKey();
   if (noKey) return noKey;
-  const parsed = await parseBody(req, Body, "Image invalide");
+  const parsed = await parseBody(req, Body, "Image invalide", { maxBytes: BODY_LIMITS.image });
   if (!parsed.ok) return parsed.response;
   const blocked = await guard(req, "ingredients");
   if (blocked) return blocked;
@@ -52,7 +52,10 @@ export async function POST(req: Request) {
           ],
         },
       ],
-    });
+    },
+    // maxDuration is 60 s: fail fast instead of the SDK's 10-minute default (audit M-6).
+    { timeout: 40_000, maxRetries: 1 },
+    );
     await recordUsage(response, "ingredients");
     const out = response.parsed_output;
     if (response.stop_reason === "refusal" || !out) return jsonError("Lecture impossible, réessayez avec une autre photo.", 422);
@@ -63,5 +66,7 @@ export async function POST(req: Request) {
     return Response.json({ ...out, ingredientsText: cleanText(out.ingredientsText, 4000), productName: cleanText(out.productName, 120), brand: cleanText(out.brand, 60), note: cleanText(out.note, 200) });
   } catch (err) {
     return anthropicErrorResponse(err, "ingredients", "Service de lecture indisponible.");
+  } finally {
+    await release("ingredients"); // give back the budget reserved by guard() (audit M-5)
   }
 }

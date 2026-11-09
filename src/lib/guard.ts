@@ -1,5 +1,6 @@
 import "server-only";
 import type Anthropic from "@anthropic-ai/sdk";
+import { isIP } from "node:net";
 import { auth } from "@/auth";
 import { kv } from "./kv";
 
@@ -56,17 +57,27 @@ export function costOf(u: Anthropic.Beta.BetaUsage, model: string): number {
 
 /* ---------- Identity -------------------------------------------------- */
 
+/**
+ * The visitor's IP for rate limiting (audit M-4). Forwarding headers are only trusted behind a proxy that
+ * overwrites them: Vercel does (VERCEL is set there); set TRUST_PROXY=1 elsewhere only if that is true.
+ * Otherwise anyone could send a new fake IP with each request and get fresh limits. The value must also
+ * be a real IP address, so arbitrary header text never becomes a storage key.
+ */
+export function clientIp(req: Request, env: Record<string, string | undefined> = process.env): string {
+  const trusted = !!env.VERCEL || env.TRUST_PROXY === "1";
+  const raw = trusted ? req.headers.get("x-real-ip") || req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "" : "";
+  return isIP(raw) ? raw : "unknown";
+}
+
 async function identify(req: Request): Promise<{ id: string; signedIn: boolean }> {
   try {
-    const session = await auth();
-    const key = session?.user?.email ?? session?.user?.id;
-    if (key) return { id: `u:${key.toLowerCase()}`, signedIn: true };
+    // Stable, verified Google account id (audit M-8), never the email address.
+    const id = (await auth())?.user?.id;
+    if (id?.startsWith("google:")) return { id: `u:${id}`, signedIn: true };
   } catch {
     /* auth not configured: fall back to IP */
   }
-  // On Vercel these headers are set by the platform. When self-hosting, put a trusted proxy in front.
-  const ip = req.headers.get("x-real-ip") || req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
-  return { id: `ip:${ip}`, signedIn: false };
+  return { id: `ip:${clientIp(req)}`, signedIn: false };
 }
 
 /* ---------- Public API ------------------------------------------------ */
@@ -78,19 +89,43 @@ const HOUR = 3_600;
 
 const json = (error: string, status: number, headers?: HeadersInit) => Response.json({ error }, { status, headers });
 
+const BUDGET_MSG = "Belle a reçu beaucoup de demandes aujourd'hui. Cette fonction revient demain.";
+
+/**
+ * Worst-case cost of one request per feature, in USD, reserved before the model is called (audit M-5).
+ * Before, the cap was check-then-record: with $4.99 spent of $5, 20 simultaneous requests all passed the
+ * check (probed: 20/20) and could overshoot by about $30. Reserving is one atomic increment, so concurrent
+ * requests see each other. The real cost is added by recordUsage; release() gives the reservation back.
+ */
+const RESERVE: Record<Feature, number> = { chat: 0.6, "live-prices": 0.6, shade: 0.1, ingredients: 0.15, "shade-match": 0.6 };
+
+async function reserve(feature: Feature): Promise<boolean> {
+  const total = await kv.incrByFloat(spendKey(), RESERVE[feature], 2 * DAY);
+  if (total <= dailyBudget()) return true;
+  await kv.incrByFloat(spendKey(), -RESERVE[feature], 2 * DAY);
+  return false;
+}
+
+/** Gives back the reservation made by guard(). Call it once, in a `finally`, in every paid route. Never throws. */
+export async function release(feature: Feature): Promise<void> {
+  await kv.incrByFloat(spendKey(), -RESERVE[feature], 2 * DAY).catch((e) => console.error("[budget] release", e));
+}
+
 /**
  * Call at the top of a paid route. Returns a Response to send back (429 / 503) when the request must be
- * refused, or null to continue. Counts the request against the visitor's limits.
+ * refused, or null to continue. Counts the request against the visitor's limits and, when it returns null,
+ * has reserved budget for it: the route must then call release(feature) in a `finally`.
  */
 export async function guard(req: Request, feature: Feature): Promise<Response | null> {
   try {
+    // Cheap early exit: no rate-limit counting once the day's budget is gone.
     if (await overBudget()) {
       await countStat(feature, "blocked");
-      return json("Belle a reçu beaucoup de demandes aujourd'hui. Cette fonction revient demain.", 503);
+      return json(BUDGET_MSG, 503);
     }
     // Evaluation runs (npm run eval:advisor) skip the per-visitor limits, never the daily budget. Only outside
     // production, and only with the secret EVAL_TOKEN the runner also knows: in production this line is inert.
-    if (isEvalRequest(req)) return null;
+    if (isEvalRequest(req)) return (await reserve(feature)) ? null : json(BUDGET_MSG, 503);
     const { id, signedIn } = await identify(req);
     const l = LIMITS[feature];
     const i = signedIn ? 1 : 0;
@@ -106,6 +141,10 @@ export async function guard(req: Request, feature: Feature): Promise<Response | 
       const retryAfter = day > l.perDay[i] ? DAY : HOUR - (Math.floor(Date.now() / 1000) % HOUR);
       return json(`Vous avez atteint la limite pour le moment, réessayez ${retry}.${hint}`, 429, { "Retry-After": String(retryAfter) });
     }
+    if (!(await reserve(feature))) {
+      await countStat(feature, "blocked");
+      return json(BUDGET_MSG, 503);
+    }
     return null;
   } catch (err) {
     // Store unreachable: fail closed, since an open endpoint costs money.
@@ -114,9 +153,34 @@ export async function guard(req: Request, feature: Feature): Promise<Response | 
   }
 }
 
-/** True once today's estimated spend has reached the daily budget. */
-export async function overBudget(): Promise<boolean> {
-  return (await kv.getNumber(spendKey())) >= dailyBudget();
+/** Requests per minute on the free catalog routes (search, product sheets). */
+const CATALOG_PER_MINUTE: [anon: number, user: number] = [30, 60];
+
+/**
+ * Per-minute limit on the free routes that call Open Beauty Facts (audit M-7). OBF asks for about
+ * 10 searches a minute per IP, and one product sheet can make 3: without a limit, one script could use
+ * the server's whole share and make search fail for everyone. Free, so it fails open if Redis is down.
+ */
+export async function rateLimit(req: Request, kind: "catalog"): Promise<Response | null> {
+  if (isEvalRequest(req)) return null;
+  try {
+    const { id, signedIn } = await identify(req);
+    const n = await kv.incr(`rl:${kind}:${id}:m:${Math.floor(Date.now() / 60_000)}`, 60);
+    return n > CATALOG_PER_MINUTE[signedIn ? 1 : 0] ? json("Trop de recherches d'un coup, patientez une minute.", 429, { "Retry-After": "60" }) : null;
+  } catch (err) {
+    console.error("[rate-limit]", err);
+    return null;
+  }
+}
+
+/**
+ * True once today's estimated spend has reached the daily budget. Inside a paid route, pass the route's
+ * feature: its own reservation (made by guard) is then not counted, or a request close to the cap would
+ * stop itself after one turn although its budget was reserved.
+ */
+export async function overBudget(reservedFor?: Feature): Promise<boolean> {
+  const own = reservedFor ? RESERVE[reservedFor] : 0;
+  return (await kv.getNumber(spendKey())) - own >= dailyBudget();
 }
 
 /** Adds a response's estimated cost to today's total. Pass the whole message (it carries `usage` and `model`). Never throws. */

@@ -1,8 +1,8 @@
 import { z } from "zod";
 import { auth } from "@/auth";
-import { jsonError, parseBody } from "@/lib/api-utils";
+import { jsonError, BODY_LIMITS, parseBody } from "@/lib/api-utils";
 import { kv } from "@/lib/kv";
-import { ProfileSchema } from "@/lib/schemas";
+import { StoredProfileSchema } from "@/lib/schemas";
 
 /**
  * Account copy of the profile and favourites, so they follow her across devices.
@@ -20,16 +20,23 @@ const FavoriteSchema = z.object({
 });
 
 const Body = z.object({
-  profile: ProfileSchema,
+  profile: StoredProfileSchema,
   favorites: z.array(FavoriteSchema).max(300),
   updatedAt: z.number().int().positive(),
 });
 export type SyncedData = z.infer<typeof Body>;
 
-async function userKey(): Promise<string | null> {
+/**
+ * Storage key for the signed-in account: its stable Google id (audit M-8), never the email address.
+ * `legacyKey` is where the email-keyed version stored copies before; they are NOT migrated (they were
+ * written under the weakness being fixed), only erased on deletion. Each device re-uploads its own copy
+ * when the account has none, so no profile is lost.
+ */
+async function account(): Promise<{ key: string; legacyKey?: string } | null> {
   try {
-    const email = (await auth())?.user?.email;
-    return email ? `user:v1:${email.toLowerCase()}` : null;
+    const user = (await auth())?.user;
+    if (!user?.id?.startsWith("google:")) return null;
+    return { key: `user:v2:${user.id}`, legacyKey: user.email ? `user:v1:${user.email.toLowerCase()}` : undefined };
   } catch {
     return null;
   }
@@ -39,16 +46,16 @@ const unauthorized = () => jsonError("Connectez-vous pour synchroniser vos donn√
 const noStore = { "Cache-Control": "no-store" };
 
 export async function GET() {
-  const key = await userKey();
+  const key = (await account())?.key;
   if (!key) return unauthorized();
   const data = await kv.getJSON<SyncedData>(key);
   return Response.json({ data }, { headers: noStore });
 }
 
 export async function PUT(req: Request) {
-  const key = await userKey();
+  const key = (await account())?.key;
   if (!key) return unauthorized();
-  const parsed = await parseBody(req, Body);
+  const parsed = await parseBody(req, Body, undefined, { maxBytes: BODY_LIMITS.sync });
   if (!parsed.ok) return parsed.response;
   // Last write wins, but never let an older device overwrite newer data.
   const current = await kv.getJSON<SyncedData>(key);
@@ -58,8 +65,9 @@ export async function PUT(req: Request) {
 }
 
 export async function DELETE() {
-  const key = await userKey();
-  if (!key) return unauthorized();
-  await kv.del(key);
+  const a = await account();
+  if (!a) return unauthorized();
+  // Erasure covers the copy saved under the old email key too (GDPR art. 17).
+  await Promise.all([kv.del(a.key), a.legacyKey ? kv.del(a.legacyKey) : null]);
   return new Response(null, { status: 204 });
 }

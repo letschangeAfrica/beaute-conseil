@@ -1,5 +1,6 @@
 import NextAuth from "next-auth";
 import Google from "next-auth/providers/google";
+import { authCallbacks } from "./lib/authCallbacks";
 
 /**
  * Auth.js (next-auth v5). Google is the only provider for now, so "sign in" and
@@ -12,10 +13,8 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   providers: [Google],
   pages: { signIn: "/connexion", error: "/connexion" },
   trustHost: true,
+  callbacks: authCallbacks, // audit M-8: verified email only, stable Google account id as identity
 });
 
-/** Only allow same-site relative paths as post-login destinations (prevents open redirects). */
-export function safeRedirect(path: string | string[] | undefined, fallback = "/profil"): string {
-  const p = Array.isArray(path) ? path[0] : path;
-  return p && p.startsWith("/") && !p.startsWith("//") && !p.startsWith("/\\") ? p : fallback;
-}
+/** Same-site post-login destinations only (audit M-1): see src/lib/redirect.ts. */
+export { safeRedirect } from "./lib/redirect";

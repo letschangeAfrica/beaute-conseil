@@ -34,12 +34,60 @@ type Parsed<T> = { ok: true; data: T } | { ok: false; response: Response };
  * `req.json()` + `schema.safeParse` + 400. Malformed JSON is a 400, not a 500.
  * `invalidMsg` can be a function of the validation error, to name the field that failed.
  */
+/**
+ * Body size caps per route, sized from the real maximum each one can legitimately receive:
+ * chat history is capped at 24,000 characters (up to 3 bytes each in UTF-8, plus the profile);
+ * account sync carries the profile and up to 300 favourites; photos are resized in the browser
+ * (selfie 1024 px, label 1800 px) and sent as base64.
+ */
+export const BODY_LIMITS = { default: 32_000, chat: 128_000, sync: 256_000, image: 6_000_000 } as const;
+
+/** Reads at most `maxBytes` of the body, without trusting Content-Length. Null when too large. */
+async function readLimited(req: Request, maxBytes: number): Promise<string | null> {
+  const declared = Number(req.headers.get("content-length"));
+  if (declared > maxBytes) return null;
+  const reader = req.body?.getReader();
+  if (!reader) return "";
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    size += value.byteLength;
+    if (size > maxBytes) {
+      await reader.cancel().catch(() => {});
+      return null;
+    }
+    chunks.push(value);
+  }
+  const all = new Uint8Array(size);
+  let offset = 0;
+  for (const c of chunks) {
+    all.set(c, offset);
+    offset += c.byteLength;
+  }
+  return new TextDecoder().decode(all);
+}
+
 export async function parseBody<S extends z.ZodType>(
   req: Request,
   schema: S,
   invalidMsg: string | ((error: z.ZodError) => string) = API_MSG.invalid,
+  { maxBytes = BODY_LIMITS.default }: { maxBytes?: number } = {},
 ): Promise<Parsed<z.output<S>>> {
-  const raw: unknown = await req.json().catch(() => undefined);
+  // Audit M-3. JSON only: a text/plain "simple" request from another website could otherwise reach the
+  // paid routes with a visitor's browser and identity (CSRF). Browsers also say where a request comes
+  // from (Sec-Fetch-Site): refuse cross-site. And never buffer more than the route can legitimately need.
+  if (!req.headers.get("content-type")?.toLowerCase().startsWith("application/json")) return { ok: false, response: jsonError(API_MSG.invalid, 415) };
+  if (req.headers.get("sec-fetch-site") === "cross-site") return { ok: false, response: jsonError("Requête refusée.", 403) };
+  const text = await readLimited(req, maxBytes);
+  if (text === null) return { ok: false, response: jsonError("Requête trop volumineuse.", 413) };
+  let raw: unknown;
+  try {
+    raw = JSON.parse(text);
+  } catch {
+    raw = undefined;
+  }
   const parsed = schema.safeParse(raw);
   if (parsed.success) return { ok: true, data: parsed.data };
   const message = typeof invalidMsg === "function" ? invalidMsg(parsed.error) : invalidMsg;

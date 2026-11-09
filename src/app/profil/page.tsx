@@ -12,6 +12,7 @@ import { SelfieAnalysis } from "@/components/profile/SelfieAnalysis";
 import { DEFAULT_PROFILE, clearLocalData, useProfile, useSelfieConsent } from "@/lib/useLocal";
 import type { Profile, ShadeAnalysis } from "@/lib/types";
 import { AVOIDS, AllergyEditor, CONCERNS, ChoiceGroup, Chip, OptionCard, PREFS, SKIN_TYPES, Section, SensitiveToggle, ToneGrid, UNDERTONES, toggle } from "@/components/ProfileFields";
+import { PROFILE_LIMITS } from "@/lib/types";
 import { resizeImage } from "@/lib/image";
 import { errorMessage, postJson } from "@/lib/utils";
 
@@ -231,7 +232,7 @@ export default function ProfilPage() {
             <p className="mt-1 text-[0.95rem] text-ink/70">Pour les prix relevés près de chez vous.</p>
             <div className="relative mt-3">
               <MapPin size={18} aria-hidden="true" className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-ink/60" />
-              <input id="city" className="input pl-11" value={p.city ?? ""} onChange={(e) => set("city", e.target.value)} placeholder="Ex. Lyon" autoComplete="address-level2" />
+              <input id="city" maxLength={PROFILE_LIMITS.cityChars} className="input pl-11" value={p.city ?? ""} onChange={(e) => set("city", e.target.value)} placeholder="Ex. Lyon" autoComplete="address-level2" />
             </div>
           </div>
           {consentSentence}
